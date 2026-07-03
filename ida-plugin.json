@@ -1,0 +1,31 @@
+{
+  "IDAMetadataDescriptorVersion": 1,
+  "plugin": {
+    "name": "idavim",
+    "entryPoint": "idavim_entry.py",
+    "version": "0.1.0",
+    "idaVersions": ">=9.0",
+    "description": "Vim-style keyboard navigation for IDA Pro, inspired by Vimium and IdeaVim.\nNavigate the disassembly and Hex-Rays pseudocode views with hjkl, u/d half-page scrolling, gg/G, f/F character find, / search with n/N, word motions and counts. Press i for insert (passthrough) mode, Ctrl+[ to return to normal mode, Ctrl-Shift-V to toggle the plugin.",
+    "license": "MIT",
+    "logoPath": "ida-plugin.png",
+    "categories": [
+      "ui-ux-and-visualization"
+    ],
+    "keywords": [
+      "vim",
+      "vimium",
+      "keyboard",
+      "navigation",
+      "shortcuts"
+    ],
+    "urls": {
+      "repository": "https://github.com/hyuunnn/idavim"
+    },
+    "authors": [
+      {
+        "name": "Hyun Yi",
+        "email": "hyuunnnnn@gmail.com"
+      }
+    ]
+  }
+}
