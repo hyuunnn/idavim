@@ -170,7 +170,8 @@ class VimEventFilter(QtCore.QObject):
 
         if self.mode == MODE_INSERT:
             # only the "back to NORMAL" chords are intercepted
-            if ctrl and event.key() == Qt.Key.Key_BracketLeft:
+            # (on macOS Qt maps the physical Ctrl key to MetaModifier)
+            if (ctrl or meta) and event.key() == Qt.Key.Key_BracketLeft:
                 return True
             if event.key() == Qt.Key.Key_Escape and bool(
                 mods & Qt.KeyboardModifier.ShiftModifier
@@ -392,14 +393,16 @@ class VimEventFilter(QtCore.QObject):
             if starts:
                 x = starts[0]
             else:
-                # wrap to the start of the next line
+                # wrap to the first word of the next line
                 self._send_key(widget, Qt.Key.Key_Down)
                 self._send_key(widget, Qt.Key.Key_Home)
                 ctx = self._viewer_ctx()
                 if ctx is None:
                     return
                 viewer, text, place, x, y = ctx
-                continue
+                starts = [m.start() for m in WORD_RE.finditer(text)]
+                if starts:
+                    x = starts[0]
         self._jump_to_column(viewer, place, x, y)
 
     def _word_end(self, widget, count):
@@ -413,13 +416,16 @@ class VimEventFilter(QtCore.QObject):
             if ends:
                 x = ends[0]
             else:
+                # wrap to the end of the first word of the next line
                 self._send_key(widget, Qt.Key.Key_Down)
                 self._send_key(widget, Qt.Key.Key_Home)
                 ctx = self._viewer_ctx()
                 if ctx is None:
                     return
                 viewer, text, place, x, y = ctx
-                continue
+                ends = [m.end() - 1 for m in WORD_RE.finditer(text)]
+                if ends:
+                    x = ends[0]
         self._jump_to_column(viewer, place, x, y)
 
     def _word_backward(self, widget, count):
@@ -433,14 +439,16 @@ class VimEventFilter(QtCore.QObject):
             if starts:
                 x = starts[-1]
             else:
-                # wrap to the end of the previous line
+                # wrap to the last word of the previous line
                 self._send_key(widget, Qt.Key.Key_Up)
                 self._send_key(widget, Qt.Key.Key_End)
                 ctx = self._viewer_ctx()
                 if ctx is None:
                     return
                 viewer, text, place, x, y = ctx
-                continue
+                starts = [m.start() for m in WORD_RE.finditer(text)]
+                if starts:
+                    x = starts[-1]
         self._jump_to_column(viewer, place, x, y)
 
     # ------------------------------------------------------------------ #

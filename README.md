@@ -16,7 +16,7 @@ idavim is modal, like vim:
 | Action | Key |
 |---|---|
 | Enter INSERT (passthrough) mode | `i` |
-| Back to NORMAL mode | `Ctrl+[` or `Shift+Esc` |
+| Back to NORMAL mode | `Ctrl+[` or `Shift+Esc` (macOS: `⌃[` or `⌘[` both work) |
 | Enable/disable idavim entirely | `Ctrl+Shift+V` (or Edit → Plugins → idavim) |
 
 Keys are intercepted with an application-level Qt event filter, so nothing is stolen from dialogs, the CLI input, or any other text field — only the listing views are affected.

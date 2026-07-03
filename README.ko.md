@@ -16,7 +16,7 @@ idavim은 vim처럼 모달(modal) 방식으로 동작합니다:
 | 동작 | 키 |
 |---|---|
 | INSERT(통과) 모드 진입 | `i` |
-| NORMAL 모드 복귀 | `Ctrl+[` 또는 `Shift+Esc` |
+| NORMAL 모드 복귀 | `Ctrl+[` 또는 `Shift+Esc` (macOS: `⌃[`, `⌘[` 모두 가능) |
 | idavim 전체 켜기/끄기 | `Ctrl+Shift+V` (또는 Edit → Plugins → idavim) |
 
 키 가로채기는 애플리케이션 레벨 Qt 이벤트 필터로 구현되어 있어서, 다이얼로그·CLI 입력창·기타 텍스트 입력에서는 키를 절대 빼앗지 않습니다 — 리스팅 뷰에서만 동작합니다.
