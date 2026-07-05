@@ -52,6 +52,26 @@ DISASM_SEARCH_LIMIT = 50000
 # disassembly view
 VIM_KEYS = set("hjklGgudfFwbe0$^;,/nN123456789")
 
+# keys intercepted only in the pseudocode view. The check lives in
+# _in_vim_context (where the widget type is already resolved) so that
+# _wants stays free of IDA API calls: in the disassembly view ':' is IDA's
+# "enter comment" and 'c' is "make code" — they must stay with IDA there.
+PSEUDOCODE_ONLY_KEYS = set(":c")
+
+# Hex-Rays action invoked by cw (rename the item under the cursor)
+HX_RENAME_ACTION = "hx:Rename"
+
+# bare modifier presses must not cancel a pending command (Shift is held
+# while typing an uppercase or symbol target for f/F)
+MODIFIER_KEYS = (
+    Qt.Key.Key_Shift,
+    Qt.Key.Key_Control,
+    Qt.Key.Key_Meta,
+    Qt.Key.Key_Alt,
+    Qt.Key.Key_AltGr,
+    Qt.Key.Key_CapsLock,
+)
+
 WORD_RE = re.compile(r"\w+|[^\w\s]+")
 
 
@@ -68,7 +88,7 @@ class VimEventFilter(QtCore.QObject):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.enabled = True
-        self.pending = ""  # "f", "F" (find char) or "g" (gg)
+        self.pending = ""  # "f"/"F" (find char), "g" (gg) or "c" (cw)
         self.pending_count = 0  # count typed before the pending prefix (3gg)
         self.count = ""  # accumulated count prefix, e.g. "12" for 12j
         self.last_find = None  # (cmd, char) for ; and ,
@@ -96,9 +116,9 @@ class VimEventFilter(QtCore.QObject):
         self.count = ""
 
     def _on_focus_changed(self, _old, _new):
-        # moving focus abandons a half-typed command: a pending f/F/g target
-        # or count prefix must not hijack a key pressed much later. The
-        # completed-command state (last_find, search) is kept.
+        # moving focus abandons a half-typed command: a pending f/F/g/c
+        # target or count prefix must not hijack a key pressed much later.
+        # The completed-command state (last_find, search) is kept.
         self._reset_pending()
 
     def _take_count(self):
@@ -125,7 +145,7 @@ class VimEventFilter(QtCore.QObject):
             # cheap checks first: _wants only reads the enabled flag and the
             # Qt event, so the IDA API probe in _in_vim_context runs only
             # for keys idavim might actually claim
-            wanted = self._wants(event) and self._in_vim_context()
+            wanted = self._wants(event) and self._in_vim_context(event)
 
             if logger.isEnabledFor(logging.DEBUG) and etype == QEvent.Type.KeyPress:
                 logger.debug(
@@ -148,7 +168,7 @@ class VimEventFilter(QtCore.QObject):
             logger.exception("idavim key handling failed")
             return False
 
-    def _in_vim_context(self):
+    def _in_vim_context(self, event):
         app = QtWidgets.QApplication
         if app.activeModalWidget() is not None:
             return False
@@ -179,6 +199,13 @@ class VimEventFilter(QtCore.QObject):
         if widget_type not in VIM_WIDGET_TYPES:
             return False
 
+        # pseudocode-only keys stay with IDA everywhere else
+        if (
+            event.text() in PSEUDOCODE_ONLY_KEYS
+            and widget_type != ida_kernwin.BWN_PSEUDOCODE
+        ):
+            return False
+
         # stay out of graph (and proximity) mode: line-oriented motions make
         # no sense there, so leave every key to IDA
         if widget_type == ida_kernwin.BWN_DISASM:
@@ -206,6 +233,11 @@ class VimEventFilter(QtCore.QObject):
 
         text = event.text()
         if not text:
+            # text-less keys (arrows, PgUp/PgDn, Home/End, F-keys) abandon a
+            # half-typed command just like other non-completing keys do,
+            # while still reaching IDA; bare modifier presses do not
+            if self.pending and event.key() not in MODIFIER_KEYS:
+                self._reset_pending()
             return False
 
         if self.pending:
@@ -226,17 +258,7 @@ class VimEventFilter(QtCore.QObject):
         if text in ";," and self.last_find is None:
             return False  # keep IDA's `;` (comment) until f/F has been used
 
-        if text == ":":
-            # the :{n} line-jump prompt is pseudocode-only; in the
-            # disassembly view ':' stays with IDA ("enter comment")
-            return self._is_pseudocode()
-
-        if text == "c":
-            # cw (rename) is pseudocode-only; in the disassembly view 'c'
-            # stays with IDA ("make code")
-            return self._is_pseudocode()
-
-        return text in VIM_KEYS
+        return text in VIM_KEYS or text in PSEUDOCODE_ONLY_KEYS
 
     # ------------------------------------------------------------------ #
     # key dispatch

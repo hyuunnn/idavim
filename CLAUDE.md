@@ -82,7 +82,19 @@ sync when keys change, and update the description in `ida-plugin.json` too.
   identifier") and is intercepted in the pseudocode view ONLY — in the
   disassembly view `:` is IDA's "enter comment" key and must stay with IDA.
   `cw` (rename under cursor, `process_ui_action("hx:Rename")`) is likewise
-  pseudocode-only: in the disassembly view `c` is IDA's "make code".
+  pseudocode-only: in the disassembly view `c` is IDA's "make code". The
+  pseudocode-only gating lives in `_in_vim_context` (PSEUDOCODE_ONLY_KEYS,
+  checked against the already-resolved widget type), NOT in `_wants` — that
+  keeps `_wants` free of IDA API calls per the ordering invariant above.
+- **Known limitation, deliberately NOT fixed**: a bare count (digits typed
+  with no pending prefix) is not cancelled by Esc — Esc passes to IDA
+  (navigate back) and the count stays armed for the next motion. Reviewed
+  and accepted: the count is cleared by any motion, focus change, or toggle.
+- **Known limitation, deliberately NOT fixed**: acquire_filter is not
+  atomic (an exception between filter creation and refcount increment could
+  leave a half-initialized singleton) and the j/k hot path re-resolves the
+  widget/viewer 2-3x per press with a redundant place clone. Reviewed;
+  no realistic trigger / microsecond-scale cost — not worth the churn.
 - **Known limitation, deliberately NOT fixed**: w/e/b wrapping at the first/
   last line of the listing moves the cursor to the wrong word instead of
   staying put like vim. A fix based on `place.clone()` + `place.compare()`

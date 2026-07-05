@@ -60,7 +60,7 @@ In the disassembly view it walks item heads (disassembly text and names) from th
 |---|---|
 | `cw` | rename the identifier under the cursor (opens IDA's rename dialog) — pseudocode view only; in the disassembly view `c` stays IDA's "make code" |
 
-Everything else (`Esc`, `Enter`, `x`, `Space`, arrows, ...) is passed through to IDA even while idavim is enabled. The only exception is the single key typed right after `f`/`F`/`g`: a printable key completes that command, and a plain `Esc` cancels it (vim-style) without triggering IDA's "navigate back".
+Everything else (`Esc`, `Enter`, `x`, `Space`, arrows, ...) is passed through to IDA even while idavim is enabled. The only exception is the single key typed right after `f`/`F`/`g`/`c`: a printable key completes that command, and a plain `Esc` cancels it (vim-style) without triggering IDA's "navigate back".
 
 ### Command composition
 
