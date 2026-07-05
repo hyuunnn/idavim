@@ -23,7 +23,10 @@ def should_load():
     kernel_version = tuple(
         int(part) for part in ida_kernwin.get_kernel_version().split(".") if part.isdigit()
     ) or (0,)
-    if kernel_version < (9, 0):
+    # compare against (9,), not (9, 0): non-digit components are dropped
+    # above, and a shortened tuple like (9,) would compare as OLDER than
+    # (9, 0), wrongly rejecting a valid 9.x
+    if kernel_version < (9,):
         logger.warning("IDA too old (must be 9.0+): %s", ida_kernwin.get_kernel_version())
         return False
 
