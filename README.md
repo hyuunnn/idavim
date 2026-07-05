@@ -15,9 +15,9 @@ idavim is a simple on/off switch:
 
 | Action | Key |
 |---|---|
-| Disable idavim (use IDA keys) | `i` |
-| Re-enable idavim | `Shift+Esc` (plain `Esc` stays with IDA's "navigate back") |
-| Toggle | `Ctrl+Shift+V` (macOS: `⌘⇧V`, or Edit → Plugins → idavim) |
+| Toggle enabled ↔ disabled | `Shift+Esc` (plain `Esc` stays with IDA's "navigate back"; also Edit → Plugins → idavim) |
+
+The toggle is a regular IDA action (`idavim: toggle`), so the key can be remapped in Options → Shortcuts.
 
 State changes are printed to the Output window (`[idavim] enabled` / `[idavim] disabled`), so check there when unsure.
 

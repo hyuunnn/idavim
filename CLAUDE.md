@@ -30,11 +30,14 @@ sync when keys change, and update the description in `ida-plugin.json` too.
   key is redelivered as a `KeyPress`, which we consume. Both event types must
   pass the same `_wants()` predicate.
 - **Enable/disable, not vim modes**: a single boolean, deliberately not
-  NORMAL/INSERT (two layers of state confused users). Enabled intercepts the
-  vim keys; `i` disables so IDA's native single-key shortcuts (n/d/u/g/...)
-  work; `Shift+Esc` re-enables; the toggle action flips the same flag.
-  `Ctrl+[` was removed because macOS turns it into ESC (conflicts with
-  IDA's Esc = navigate back) and `Cmd+[` is IDA's own back-navigation.
+  NORMAL/INSERT (two layers of state confused users). The toggle is a
+  registered IDA action (`idavim:toggle`, hotkey `Shift-Esc`, remappable in
+  Options → Shortcuts) — the event filter itself intercepts nothing while
+  disabled. While disabled every key (IDA's native n/d/u/g/...) goes to IDA.
+  `i` was tried as the disable chord and removed — it is IDA's
+  MakeExtraLineA (insert comment line) in the disassembly view. `Ctrl+[`
+  was removed because macOS turns it into ESC (conflicts with IDA's Esc =
+  navigate back) and `Cmd+[` is IDA's own back-navigation.
 - **Singleton filter**: the filter is a refcounted module-level singleton.
   IDA can create a new plugmod per database without tearing down the old one
   first; two live filters desync their enabled state and a stale one keeps

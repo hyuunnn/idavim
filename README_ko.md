@@ -15,9 +15,9 @@ idavim은 단순한 켜기/끄기(on/off) 방식으로 동작합니다:
 
 | 동작 | 키 |
 |---|---|
-| idavim 비활성화 (IDA 키 사용) | `i` |
-| idavim 재활성화 | `Shift+Esc` (일반 `Esc`는 IDA "뒤로 가기"로 그대로 동작) |
-| 토글 | `Ctrl+Shift+V` (macOS: `⌘⇧V`, 또는 Edit → Plugins → idavim) |
+| 활성화 ↔ 비활성화 토글 | `Shift+Esc` (일반 `Esc`는 IDA "뒤로 가기"로 그대로 동작, Edit → Plugins → idavim으로도 가능) |
+
+토글은 정식 IDA 액션(`idavim: toggle`)으로 등록되어 있어서 Options → Shortcuts에서 키를 바꿀 수 있습니다.
 
 상태가 바뀔 때마다 Output 창에 `[idavim] enabled` / `[idavim] disabled` 메시지가 출력되므로, 현재 상태가 헷갈릴 땐 Output 창을 확인하세요.
 

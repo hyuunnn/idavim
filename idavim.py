@@ -6,8 +6,8 @@ similar to Vimium / IdeaVim.
 
 Keys are intercepted with an application-level Qt event filter so they take
 priority over IDA's own single-key shortcuts (n, d, u, g, ...) while idavim
-is enabled. Press `i` to disable idavim and use IDA's native keys; press
-Shift+Esc to re-enable it.
+is enabled. Press Shift+Esc to toggle idavim off (all keys go to IDA) and
+back on.
 """
 
 import logging
@@ -47,8 +47,10 @@ VIM_WIDGET_TYPES = (
 # disassembly view (the pseudocode view searches all lines and wraps)
 DISASM_SEARCH_LIMIT = 50000
 
-# characters handled while idavim is enabled (without a pending prefix key)
-VIM_KEYS = set("hjklGgudfFwbe0$^;,/nNi123456789")
+# characters handled while idavim is enabled (without a pending prefix key).
+# `i` is deliberately absent: it is IDA's "insert comment line" in the
+# disassembly view
+VIM_KEYS = set("hjklGgudfFwbe0$^;,/nN123456789")
 
 WORD_RE = re.compile(r"\w+|[^\w\s]+")
 
@@ -184,13 +186,9 @@ class VimEventFilter(QtCore.QObject):
         alt = bool(mods & Qt.KeyboardModifier.AltModifier)
         meta = bool(mods & Qt.KeyboardModifier.MetaModifier)
 
+        # while disabled nothing is intercepted; the toggle itself is a
+        # registered IDA action ("idavim:toggle", Shift-Esc), not a filter key
         if not self.enabled:
-            # only the "re-enable" chord is intercepted; a plain Esc stays
-            # with IDA (navigate back) and Shift+Esc is unused by IDA
-            if event.key() == Qt.Key.Key_Escape and bool(
-                mods & Qt.KeyboardModifier.ShiftModifier
-            ):
-                return True
             return False
 
         if ctrl or alt or meta:
@@ -221,8 +219,7 @@ class VimEventFilter(QtCore.QObject):
             return False
 
         if not self.enabled:
-            self._set_enabled(True)
-            return True
+            return False
 
         char = event.text()
 
@@ -282,8 +279,6 @@ class VimEventFilter(QtCore.QObject):
             self._search_step(1, count)
         elif char == "N":
             self._search_step(-1, count)
-        elif char == "i":
-            self._set_enabled(False)
         else:
             return False
 
@@ -673,16 +668,16 @@ class idavim_plugmod_t(ida_idaapi.plugmod_t):
     def init(self):
         self.event_filter = acquire_filter()
         self.register_actions()
-        logger.info("idavim loaded and enabled (i: hand keys to IDA, Shift+Esc: re-enable, Ctrl-Shift-V: toggle)")
+        logger.info("idavim loaded and enabled (Shift+Esc: toggle)")
 
     def register_actions(self):
         ida_kernwin.unregister_action(self.ACTION_TOGGLE)
         ida_kernwin.register_action(
             ida_kernwin.action_desc_t(
                 self.ACTION_TOGGLE,
-                "idavim: toggle vim mode",
+                "idavim: toggle",
                 toggle_action_handler_t(self.event_filter),
-                "Ctrl-Shift-V",
+                "Shift-Esc",
                 "Enable or disable idavim keyboard handling",
                 -1,
             )
@@ -708,7 +703,7 @@ class idavim_plugmod_t(ida_idaapi.plugmod_t):
 class idavim_plugin_t(ida_idaapi.plugin_t):
     flags = ida_idaapi.PLUGIN_MULTI
     comment = "vim-style navigation for disassembly and pseudocode views"
-    help = "hjkl/u/d/gg/G/f/n vim navigation; i to hand keys to IDA, Shift+Esc or Ctrl-Shift-V to re-enable"
+    help = "hjkl/u/d/gg/G/f/n vim navigation; Shift+Esc to toggle"
     wanted_name = "idavim"
     wanted_hotkey = ""
 
