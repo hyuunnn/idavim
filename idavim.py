@@ -142,9 +142,11 @@ class VimEventFilter(QtCore.QObject):
             return False
 
         try:
-            # cheap checks first: _wants only reads the enabled flag and the
-            # Qt event, so the IDA API probe in _in_vim_context runs only
-            # for keys idavim might actually claim
+            # cheap checks first: _wants makes NO IDA API calls (it reads
+            # the enabled flag, the Qt event and the pending state — which
+            # it clears for keys that cannot complete a pending command),
+            # so the IDA API probe in _in_vim_context runs only for keys
+            # idavim might actually claim
             wanted = self._wants(event) and self._in_vim_context(event)
 
             if logger.isEnabledFor(logging.DEBUG) and etype == QEvent.Type.KeyPress:
@@ -275,18 +277,14 @@ class VimEventFilter(QtCore.QObject):
         if widget is None:
             return False
 
-        if not self.enabled:
-            return False
-
         char = event.text()
 
         if self.pending:
             cmd, self.pending = self.pending, ""
             target_line, self.pending_count = self.pending_count, 0
-            count = self._take_count()
             if cmd in ("f", "F") and char.isprintable():
                 self.last_find = (cmd, char)
-                self._find_in_line(cmd, char, count)
+                self._find_in_line(cmd, char, 1)
             elif cmd == "g" and char == "g":
                 if target_line:
                     self._goto_line(target_line, self._goto_top)
@@ -353,8 +351,6 @@ class VimEventFilter(QtCore.QObject):
             self._search_step(1, count)
         elif char == "N":
             self._search_step(-1, count)
-        else:
-            return False
 
         return True
 
@@ -386,7 +382,7 @@ class VimEventFilter(QtCore.QObject):
         ctx = self._viewer_ctx()
         if ctx is None:
             return
-        _viewer, _text, place, x, y = ctx
+        _text, place, x, y = ctx
 
         if self._is_pseudocode():
             total = self._pseudocode_size()
@@ -434,25 +430,36 @@ class VimEventFilter(QtCore.QObject):
         if not result:
             return None
         place, x, y = result
-        return viewer, _plain_curline(viewer), place, x, y
+        return _plain_curline(viewer), place, x, y
 
-    def _jump_to_column(self, cur_x, target_x):
-        """Move the caret within the current line by synthesizing native
-        Left/Right key events.
+    def _jump_to_column(self, target_x):
+        """Move the caret to target_x within the current line by
+        synthesizing native Left/Right key events.
 
         jumpto for a horizontal move runs IDA's full navigation (item
         highlight and address-sync recomputation) whose cost depends on the
         token under the target column, so identical motions feel fast or
         slow depending on where they land — the same lag that made h/l use
-        synthetic keys. Native caret movement is uniformly cheap."""
+        synthetic keys. Native caret movement is uniformly cheap.
+
+        The caret position is read here, right before moving, so callers
+        cannot pass a stale position; both endpoints lie within the current
+        line, which also bounds the number of synthesized events."""
         widget = QtWidgets.QApplication.focusWidget()
         if widget is None:
             return
+        viewer = ida_kernwin.get_current_viewer()
+        if viewer is None:
+            return
+        result = ida_kernwin.get_custom_viewer_place(viewer, False)
+        if not result:
+            return
+        _place, cur_x, _y = result
         dx = target_x - cur_x
         if dx > 0:
-            self._send_key(widget, Qt.Key.Key_Right, min(dx, 512))
+            self._send_key(widget, Qt.Key.Key_Right, dx)
         elif dx < 0:
-            self._send_key(widget, Qt.Key.Key_Left, min(-dx, 512))
+            self._send_key(widget, Qt.Key.Key_Left, -dx)
 
     def _is_pseudocode(self):
         """True when the current widget is a pseudocode view — regardless of
@@ -547,7 +554,7 @@ class VimEventFilter(QtCore.QObject):
         ctx = self._viewer_ctx()
         if ctx is None:
             return
-        _viewer, text, _place, x, _y = ctx
+        text, _place, x, _y = ctx
 
         pos = x
         for _ in range(count):
@@ -558,7 +565,7 @@ class VimEventFilter(QtCore.QObject):
             if pos < 0:
                 ida_kernwin.msg(f"[idavim] {char!r} not found in line\n")
                 return
-        self._jump_to_column(x, pos)
+        self._jump_to_column(pos)
 
     def _repeat_find(self, char, count):
         if self.last_find is None:
@@ -569,35 +576,28 @@ class VimEventFilter(QtCore.QObject):
         self._find_in_line(cmd, target, count)
 
     def _goto_line_start(self):
-        ctx = self._viewer_ctx()
-        if ctx is None:
-            return
-        _viewer, _text, _place, x, _y = ctx
-        self._jump_to_column(x, 0)
+        self._jump_to_column(0)
 
     def _goto_line_end(self):
         ctx = self._viewer_ctx()
         if ctx is None:
             return
-        _viewer, text, _place, x, _y = ctx
-        pos = max(0, len(text.rstrip()) - 1)
-        self._jump_to_column(x, pos)
+        text, _place, _x, _y = ctx
+        self._jump_to_column(max(0, len(text.rstrip()) - 1))
 
     def _goto_first_nonblank(self):
         ctx = self._viewer_ctx()
         if ctx is None:
             return
-        _viewer, text, _place, x, _y = ctx
+        text, _place, _x, _y = ctx
         stripped = text.lstrip()
-        pos = len(text) - len(stripped) if stripped else 0
-        self._jump_to_column(x, pos)
+        self._jump_to_column(len(text) - len(stripped) if stripped else 0)
 
     def _word_forward(self, widget, count):
         ctx = self._viewer_ctx()
         if ctx is None:
             return
-        _viewer, text, _place, x, _y = ctx
-        caret_x = x  # where the caret physically is (x tracks the target)
+        text, _place, x, _y = ctx
 
         for _ in range(count):
             starts = [m.start() for m in WORD_RE.finditer(text) if m.start() > x]
@@ -610,19 +610,17 @@ class VimEventFilter(QtCore.QObject):
                 ctx = self._viewer_ctx()
                 if ctx is None:
                     return
-                _viewer, text, _place, x, _y = ctx
-                caret_x = x
+                text, _place, x, _y = ctx
                 starts = [m.start() for m in WORD_RE.finditer(text)]
                 if starts:
                     x = starts[0]
-        self._jump_to_column(caret_x, x)
+        self._jump_to_column(x)
 
     def _word_end(self, widget, count):
         ctx = self._viewer_ctx()
         if ctx is None:
             return
-        _viewer, text, _place, x, _y = ctx
-        caret_x = x
+        text, _place, x, _y = ctx
 
         for _ in range(count):
             ends = [m.end() - 1 for m in WORD_RE.finditer(text) if m.end() - 1 > x]
@@ -635,19 +633,17 @@ class VimEventFilter(QtCore.QObject):
                 ctx = self._viewer_ctx()
                 if ctx is None:
                     return
-                _viewer, text, _place, x, _y = ctx
-                caret_x = x
+                text, _place, x, _y = ctx
                 ends = [m.end() - 1 for m in WORD_RE.finditer(text)]
                 if ends:
                     x = ends[0]
-        self._jump_to_column(caret_x, x)
+        self._jump_to_column(x)
 
     def _word_backward(self, widget, count):
         ctx = self._viewer_ctx()
         if ctx is None:
             return
-        _viewer, text, _place, x, _y = ctx
-        caret_x = x
+        text, _place, x, _y = ctx
 
         for _ in range(count):
             starts = [m.start() for m in WORD_RE.finditer(text) if m.start() < x]
@@ -660,12 +656,11 @@ class VimEventFilter(QtCore.QObject):
                 ctx = self._viewer_ctx()
                 if ctx is None:
                     return
-                _viewer, text, _place, x, _y = ctx
-                caret_x = x
+                text, _place, x, _y = ctx
                 starts = [m.start() for m in WORD_RE.finditer(text)]
                 if starts:
                     x = starts[-1]
-        self._jump_to_column(caret_x, x)
+        self._jump_to_column(x)
 
     # ------------------------------------------------------------------ #
     # search: / n N
@@ -715,7 +710,7 @@ class VimEventFilter(QtCore.QObject):
         ctx = self._viewer_ctx()
         if ctx is None:
             return False
-        viewer, _text, place, x, y = ctx
+        _text, place, x, y = ctx
         line_place = ida_kernwin.place_t_as_simpleline_place_t(place)
         if line_place is None:
             return False
@@ -746,7 +741,7 @@ class VimEventFilter(QtCore.QObject):
         ctx = self._viewer_ctx()
         if ctx is None:
             return False
-        _viewer, _text, place, _x, _y = ctx
+        _text, place, _x, _y = ctx
         addr_place = ida_kernwin.place_t_as_idaplace_t(place)
         if addr_place is None:
             return False
