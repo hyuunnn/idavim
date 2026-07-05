@@ -67,6 +67,18 @@ sync when keys change, and update the description in `ida-plugin.json` too.
   on any focus change (`QApplication.focusChanged`), so a stale prefix never
   hijacks a key pressed after the user worked elsewhere. Completed-command
   state (last_find for `;`/`,`, the `/` search pattern) survives.
+- **Known limitation, deliberately NOT fixed**: counts do not compose with
+  `f`/`F` — `3fx` finds the 1st `x` (the count is consumed when `f` sets the
+  pending state and is not carried to the target key). The plugin is a
+  navigation aid for analysis, not a vim emulator; `f` + `;;` covers the use
+  case. `{n}gg`/`{n}G` ARE supported (pseudocode only, via pending_count /
+  has_count); the disassembly listing has no line numbers so counts fall
+  back to plain gg/G there. `:` prompts for a line number (`:30`, via
+  ask_long — ask_str with HIST_IDENT rejects digits as "not a valid
+  identifier") and is intercepted in the pseudocode view ONLY — in the
+  disassembly view `:` is IDA's "enter comment" key and must stay with IDA.
+  `cw` (rename under cursor, `process_ui_action("hx:Rename")`) is likewise
+  pseudocode-only: in the disassembly view `c` is IDA's "make code".
 - **Known limitation, deliberately NOT fixed**: w/e/b wrapping at the first/
   last line of the listing moves the cursor to the wrong word instead of
   staying put like vim. A fix based on `place.clone()` + `place.compare()`

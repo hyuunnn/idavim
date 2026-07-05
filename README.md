@@ -36,6 +36,8 @@ Keys are intercepted with an application-level Qt event filter, so nothing is st
 | `h` `j` `k` `l` | left / down / up / right |
 | `d` / `u` | half page down / up (Vimium style) |
 | `gg` / `G` | top / bottom of listing (start / end of database in disassembly) |
+| `{n}gg` / `{n}G` | jump to line n — pseudocode view only (e.g. `3G` → line 3) |
+| `:` | prompt for a line number and jump to it (`:30`) — pseudocode view only; in the disassembly view `:` stays IDA's "enter comment" |
 | `0` / `^` / `$` | start of line / first non-blank / end of line |
 | `w` / `e` / `b` | next word start / word end / previous word start |
 | `1`–`9` | count prefix, e.g. `12j`, `3w`, `2d` |
@@ -52,7 +54,22 @@ Keys are intercepted with an application-level Qt event filter, so nothing is st
 In the pseudocode view, `/` searches all lines of the current function and wraps around.
 In the disassembly view it walks item heads (disassembly text and names) from the cursor.
 
+### Actions
+
+| Key | Action |
+|---|---|
+| `cw` | rename the identifier under the cursor (opens IDA's rename dialog) — pseudocode view only; in the disassembly view `c` stays IDA's "make code" |
+
 Everything else (`Esc`, `Enter`, `x`, `Space`, arrows, ...) is passed through to IDA even while idavim is enabled. The only exception is the single key typed right after `f`/`F`/`g`: a printable key completes that command, and a plain `Esc` cancels it (vim-style) without triggering IDA's "navigate back".
+
+### Command composition
+
+idavim is a navigation aid, not a vim emulator — only single commands (optionally with a count prefix) are supported:
+
+- **Supported**: `count + motion` (`12j`, `3w`, `2d`), `count + gg/G` (`30G`, pseudocode only), `f{char}` then `;`/`,`
+- **Not supported**: `count + f/F` (`3fx` finds the 1st match — use `f` + `;;`), operators and text objects (`dw`, `yy`, `ci(`, ...), marks, registers, macros
+
+An interrupted two-key sequence behaves like vim: an invalid follow-up key cancels the command (`30g` then `3` throws away both), and switching focus to another widget abandons any half-typed command.
 
 ## Requirements
 

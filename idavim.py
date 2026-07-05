@@ -69,6 +69,7 @@ class VimEventFilter(QtCore.QObject):
         super().__init__(*args, **kwargs)
         self.enabled = True
         self.pending = ""  # "f", "F" (find char) or "g" (gg)
+        self.pending_count = 0  # count typed before the pending prefix (3gg)
         self.count = ""  # accumulated count prefix, e.g. "12" for 12j
         self.last_find = None  # (cmd, char) for ; and ,
         self.search = ""  # last / pattern for n and N
@@ -91,6 +92,7 @@ class VimEventFilter(QtCore.QObject):
 
     def _reset_pending(self):
         self.pending = ""
+        self.pending_count = 0
         self.count = ""
 
     def _on_focus_changed(self, _old, _new):
@@ -222,6 +224,16 @@ class VimEventFilter(QtCore.QObject):
         if text in ";," and self.last_find is None:
             return False  # keep IDA's `;` (comment) until f/F has been used
 
+        if text == ":":
+            # the :{n} line-jump prompt is pseudocode-only; in the
+            # disassembly view ':' stays with IDA ("enter comment")
+            return self._is_pseudocode()
+
+        if text == "c":
+            # cw (rename) is pseudocode-only; in the disassembly view 'c'
+            # stays with IDA ("make code")
+            return self._is_pseudocode()
+
         return text in VIM_KEYS
 
     # ------------------------------------------------------------------ #
@@ -242,12 +254,22 @@ class VimEventFilter(QtCore.QObject):
 
         if self.pending:
             cmd, self.pending = self.pending, ""
+            target_line, self.pending_count = self.pending_count, 0
             count = self._take_count()
             if cmd in ("f", "F") and char.isprintable():
                 self.last_find = (cmd, char)
                 self._find_in_line(cmd, char, count)
             elif cmd == "g" and char == "g":
-                self._goto_top()
+                if target_line:
+                    self._goto_line(target_line, self._goto_top)
+                else:
+                    self._goto_top()
+            elif cmd == "c" and char == "w":
+                # cw: rename the identifier under the cursor, vim's
+                # "change word" mapped onto IDA's semantic rename
+                QtCore.QTimer.singleShot(
+                    0, lambda: ida_kernwin.process_ui_action("hx:Rename")
+                )
             # anything else cancels the pending command (vim-like)
             return True
 
@@ -255,6 +277,7 @@ class VimEventFilter(QtCore.QObject):
             self.count += char
             return True
 
+        has_count = bool(self.count)
         count = self._take_count()
 
         if char == "h":
@@ -271,8 +294,12 @@ class VimEventFilter(QtCore.QObject):
             self._move_lines(count * self._half_page(widget), -1)
         elif char == "g":
             self.pending = "g"
+            self.pending_count = count if has_count else 0
         elif char == "G":
-            self._goto_bottom()
+            if has_count:
+                self._goto_line(count, self._goto_bottom)
+            else:
+                self._goto_bottom()
         elif char == "0":
             self._goto_line_start()
         elif char == "$":
@@ -287,11 +314,15 @@ class VimEventFilter(QtCore.QObject):
             self._word_backward(widget, count)
         elif char in ("f", "F"):
             self.pending = char
+        elif char == "c":
+            self.pending = "c"
         elif char in (";", ","):
             self._repeat_find(char, count)
         elif char == "/":
             # open the prompt after the key event is fully processed
             QtCore.QTimer.singleShot(0, self._prompt_search)
+        elif char == ":":
+            QtCore.QTimer.singleShot(0, self._prompt_goto_line)
         elif char == "n":
             self._search_step(1, count)
         elif char == "N":
@@ -425,6 +456,19 @@ class VimEventFilter(QtCore.QObject):
                 self._jump_pseudocode_line(0)
             return  # decompilation not ready yet: do nothing
         ida_kernwin.jumpto(ida_ida.inf_get_min_ea())
+
+    def _goto_line(self, lineno, fallback=None):
+        """{n}gg / {n}G / :{n}: jump to 1-based line `lineno` in the
+        pseudocode view. The disassembly listing has no line numbers, so
+        counts fall back to the plain gg/G behavior there."""
+        if not self._is_pseudocode():
+            if fallback is not None:
+                fallback()
+            return
+        lines = self._pseudocode_lines()
+        if not lines:
+            return  # decompilation not ready yet
+        self._jump_pseudocode_line(min(max(lineno - 1, 0), len(lines) - 1))
 
     def _goto_bottom(self):
         if self._is_pseudocode():
@@ -561,6 +605,11 @@ class VimEventFilter(QtCore.QObject):
     # ------------------------------------------------------------------ #
     # search: / n N
     # ------------------------------------------------------------------ #
+
+    def _prompt_goto_line(self):
+        value = ida_kernwin.ask_long(1, "idavim: go to line")
+        if value is not None and value > 0:
+            self._goto_line(value)
 
     def _prompt_search(self):
         pattern = ida_kernwin.ask_str(self.search, ida_kernwin.HIST_SRCH, "idavim search")
