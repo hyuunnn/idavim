@@ -320,17 +320,19 @@ class VimEventFilter(QtCore.QObject):
             return
         _viewer, _text, place, x, y = ctx
 
-        widget = ida_kernwin.get_current_widget()
-        if ida_kernwin.get_widget_type(widget) == ida_kernwin.BWN_PSEUDOCODE:
+        if self._is_pseudocode():
             lines = self._pseudocode_lines()
-            if not lines:
-                return
-            cur = ida_kernwin.place_t_as_simpleline_place_t(place).n
-            target = min(max(cur + direction * count, 0), len(lines) - 1)
+            cur = ida_kernwin.place_t_as_simpleline_place_t(place)
+            if not lines or cur is None:
+                return  # decompilation not ready yet
+            target = min(max(cur.n + direction * count, 0), len(lines) - 1)
             self._jump_pseudocode_line(target, x, y)
             return
 
-        ea = ida_kernwin.place_t_as_idaplace_t(place).ea
+        cur = ida_kernwin.place_t_as_idaplace_t(place)
+        if cur is None:
+            return
+        ea = cur.ea
         min_ea = ida_ida.inf_get_min_ea()
         max_ea = ida_ida.inf_get_max_ea()
         for _ in range(count):
@@ -369,8 +371,15 @@ class VimEventFilter(QtCore.QObject):
     def _jump_to_column(self, viewer, place, x, y):
         ida_kernwin.jumpto(viewer, place, x, y)
 
+    def _is_pseudocode(self):
+        """True when the current widget is a pseudocode view — regardless of
+        whether its decompilation result is available yet."""
+        widget = ida_kernwin.get_current_widget()
+        return ida_kernwin.get_widget_type(widget) == ida_kernwin.BWN_PSEUDOCODE
+
     def _pseudocode_lines(self):
-        """Plain-text pseudocode lines of the current vdui, or None."""
+        """Plain-text pseudocode lines of the current vdui, or None while the
+        decompilation result is not available (view still loading)."""
         if not HAS_HEXRAYS:
             return None
         widget = ida_kernwin.get_current_widget()
@@ -400,20 +409,21 @@ class VimEventFilter(QtCore.QObject):
     # ------------------------------------------------------------------ #
 
     def _goto_top(self):
-        lines = self._pseudocode_lines()
-        if lines is not None:
-            self._jump_pseudocode_line(0)
-        else:
-            ida_kernwin.jumpto(ida_ida.inf_get_min_ea())
+        if self._is_pseudocode():
+            if self._pseudocode_lines():
+                self._jump_pseudocode_line(0)
+            return  # decompilation not ready yet: do nothing
+        ida_kernwin.jumpto(ida_ida.inf_get_min_ea())
 
     def _goto_bottom(self):
-        lines = self._pseudocode_lines()
-        if lines is not None:
-            self._jump_pseudocode_line(max(0, len(lines) - 1))
-        else:
-            last = ida_bytes.prev_head(ida_ida.inf_get_max_ea(), ida_ida.inf_get_min_ea())
-            if last != ida_idaapi.BADADDR:
-                ida_kernwin.jumpto(last)
+        if self._is_pseudocode():
+            lines = self._pseudocode_lines()
+            if lines:
+                self._jump_pseudocode_line(len(lines) - 1)
+            return  # decompilation not ready yet: do nothing
+        last = ida_bytes.prev_head(ida_ida.inf_get_max_ea(), ida_ida.inf_get_min_ea())
+        if last != ida_idaapi.BADADDR:
+            ida_kernwin.jumpto(last)
 
     # ------------------------------------------------------------------ #
     # in-line motions: f F ; , ^ w b
@@ -553,9 +563,12 @@ class VimEventFilter(QtCore.QObject):
             return
         # huge counts would rescan the listing over and over (the pseudocode
         # search wraps around), so cap the number of repeats
+        in_pseudocode = self._is_pseudocode()
         for _ in range(min(count, 32)):
-            lines = self._pseudocode_lines()
-            if lines is not None:
+            if in_pseudocode:
+                lines = self._pseudocode_lines()
+                if not lines:
+                    return  # decompilation not ready yet
                 found = self._search_pseudocode(lines, direction)
             else:
                 found = self._search_disasm(direction)
@@ -568,7 +581,10 @@ class VimEventFilter(QtCore.QObject):
         if ctx is None:
             return False
         viewer, _text, place, x, y = ctx
-        lineno = ida_kernwin.place_t_as_simpleline_place_t(place).n
+        line_place = ida_kernwin.place_t_as_simpleline_place_t(place)
+        if line_place is None:
+            return False
+        lineno = line_place.n
         pattern = self.search.lower()
         total = len(lines)
 
@@ -596,7 +612,10 @@ class VimEventFilter(QtCore.QObject):
         if ctx is None:
             return False
         _viewer, _text, place, _x, _y = ctx
-        ea = ida_kernwin.place_t_as_idaplace_t(place).ea
+        addr_place = ida_kernwin.place_t_as_idaplace_t(place)
+        if addr_place is None:
+            return False
+        ea = addr_place.ea
         pattern = self.search.lower()
         min_ea = ida_ida.inf_get_min_ea()
         max_ea = ida_ida.inf_get_max_ea()
