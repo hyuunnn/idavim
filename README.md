@@ -52,7 +52,7 @@ Keys are intercepted with an application-level Qt event filter, so nothing is st
 In the pseudocode view, `/` searches all lines of the current function and wraps around.
 In the disassembly view it walks item heads (disassembly text and names) from the cursor.
 
-Everything else (`Esc`, `Enter`, `x`, `Space`, arrows, ...) is passed through to IDA even while idavim is enabled.
+Everything else (`Esc`, `Enter`, `x`, `Space`, arrows, ...) is passed through to IDA even while idavim is enabled. The only exception is the single key typed right after `f`/`F`/`g`: a printable key completes that command, and a plain `Esc` cancels it (vim-style) without triggering IDA's "navigate back".
 
 ## Requirements
 

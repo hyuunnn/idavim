@@ -205,8 +205,19 @@ class VimEventFilter(QtCore.QObject):
             return False
 
         if self.pending:
-            # the next key always resolves (or cancels) the pending command
-            return True
+            if text.isprintable():
+                # printable keys resolve the pending command (f/F target, gg)
+                return True
+            if event.key() == Qt.Key.Key_Escape and not bool(
+                mods & Qt.KeyboardModifier.ShiftModifier
+            ):
+                # plain Esc cancels the pending command like vim, without
+                # also triggering IDA's Esc (navigate back)
+                return True
+            # anything else (Shift+Esc toggle, Enter, Tab, ...) abandons the
+            # pending command but must still reach IDA
+            self._reset_pending()
+            return False
 
         if text in ";," and self.last_find is None:
             return False  # keep IDA's `;` (comment) until f/F has been used
