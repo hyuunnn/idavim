@@ -59,18 +59,24 @@ sync when keys change, and update the description in `ida-plugin.json` too.
   `jumpto` once (clamped to the listing bounds; disassembly moves by item
   heads, which is deliberately rough). Disassembly jumps use
   `UIJMP_DONTPUSH` so plain movement does not pollute the Esc history.
-  Horizontal movement (`h/l`) synthesizes native Left/Right key events —
-  `jumpto` per keypress caused visible lag there. `0`/`$` jump to a
-  computed column instead of sending Home/End — IDA's own Home/End keep
-  moving the cursor on repeated presses.
+  ALL in-line horizontal motions (`h/l`, `f/F/;/,`, `0/^/$`, and the word
+  motions' landing step) move the caret by synthesizing native Left/Right
+  key events — `jumpto` for a horizontal move runs IDA's full navigation
+  (item highlight + address-sync recompute) whose cost varies with the
+  token under the target column, so identical motions felt fast or slow
+  depending on where they landed (first seen with h/l, again with `;`/`,`).
+  `0`/`$` compute the target column and arrow-key to it instead of sending
+  Home/End — IDA's own Home/End keep moving the cursor on repeated presses.
 - Never intercept keys when a modal widget is active, focus is in a text
   input, or the focus window is a QDialog; only act in `BWN_DISASM` /
   `BWN_PSEUDOCODE`, and in `BWN_DISASM` only when the renderer is
   `TCCRT_FLAT` (graph mode is left entirely to IDA).
-- Half-typed command state (pending f/F/g target, count prefix) is abandoned
-  on any focus change (`QApplication.focusChanged`), so a stale prefix never
-  hijacks a key pressed after the user worked elsewhere. Completed-command
-  state (last_find for `;`/`,`, the `/` search pattern) survives.
+- Half-typed command state (pending f/F/g/c target, count prefix) is
+  abandoned on any focus change (`QApplication.focusChanged`) AND on any
+  text-less key (arrows, PgUp/PgDn — bare modifier presses excepted, since
+  Shift is held while typing an uppercase f-target), so a stale prefix never
+  hijacks a later key. Completed-command state (last_find for `;`/`,`, the
+  `/` search pattern) survives.
 - **Known limitation, deliberately NOT fixed**: counts do not compose with
   `f`/`F` — `3fx` finds the 1st `x` (the count is consumed when `f` sets the
   pending state and is not carried to the target key). The plugin is a

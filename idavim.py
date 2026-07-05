@@ -291,9 +291,7 @@ class VimEventFilter(QtCore.QObject):
             elif cmd == "c" and char == "w":
                 # cw: rename the identifier under the cursor, vim's
                 # "change word" mapped onto IDA's semantic rename
-                QtCore.QTimer.singleShot(
-                    0, lambda: ida_kernwin.process_ui_action("hx:Rename")
-                )
+                QtCore.QTimer.singleShot(0, self._rename_under_cursor)
             # anything else cancels the pending command (vim-like)
             return True
 
@@ -434,14 +432,32 @@ class VimEventFilter(QtCore.QObject):
         place, x, y = result
         return viewer, _plain_curline(viewer), place, x, y
 
-    def _jump_to_column(self, viewer, place, x, y):
-        ida_kernwin.jumpto(viewer, place, x, y)
+    def _jump_to_column(self, cur_x, target_x):
+        """Move the caret within the current line by synthesizing native
+        Left/Right key events.
+
+        jumpto for a horizontal move runs IDA's full navigation (item
+        highlight and address-sync recomputation) whose cost depends on the
+        token under the target column, so identical motions feel fast or
+        slow depending on where they land — the same lag that made h/l use
+        synthetic keys. Native caret movement is uniformly cheap."""
+        widget = QtWidgets.QApplication.focusWidget()
+        if widget is None:
+            return
+        dx = target_x - cur_x
+        if dx > 0:
+            self._send_key(widget, Qt.Key.Key_Right, min(dx, 512))
+        elif dx < 0:
+            self._send_key(widget, Qt.Key.Key_Left, min(-dx, 512))
 
     def _is_pseudocode(self):
         """True when the current widget is a pseudocode view — regardless of
         whether its decompilation result is available yet."""
         widget = ida_kernwin.get_current_widget()
-        return ida_kernwin.get_widget_type(widget) == ida_kernwin.BWN_PSEUDOCODE
+        return (
+            widget is not None
+            and ida_kernwin.get_widget_type(widget) == ida_kernwin.BWN_PSEUDOCODE
+        )
 
     def _pseudocode_vdui(self):
         """The current pseudocode view's vdui with a ready cfunc, or None
@@ -527,7 +543,7 @@ class VimEventFilter(QtCore.QObject):
         ctx = self._viewer_ctx()
         if ctx is None:
             return
-        viewer, text, place, x, y = ctx
+        _viewer, text, _place, x, _y = ctx
 
         pos = x
         for _ in range(count):
@@ -538,7 +554,7 @@ class VimEventFilter(QtCore.QObject):
             if pos < 0:
                 ida_kernwin.msg(f"[idavim] {char!r} not found in line\n")
                 return
-        self._jump_to_column(viewer, place, pos, y)
+        self._jump_to_column(x, pos)
 
     def _repeat_find(self, char, count):
         if self.last_find is None:
@@ -552,31 +568,32 @@ class VimEventFilter(QtCore.QObject):
         ctx = self._viewer_ctx()
         if ctx is None:
             return
-        viewer, _text, place, _x, y = ctx
-        self._jump_to_column(viewer, place, 0, y)
+        _viewer, _text, _place, x, _y = ctx
+        self._jump_to_column(x, 0)
 
     def _goto_line_end(self):
         ctx = self._viewer_ctx()
         if ctx is None:
             return
-        viewer, text, place, _x, y = ctx
+        _viewer, text, _place, x, _y = ctx
         pos = max(0, len(text.rstrip()) - 1)
-        self._jump_to_column(viewer, place, pos, y)
+        self._jump_to_column(x, pos)
 
     def _goto_first_nonblank(self):
         ctx = self._viewer_ctx()
         if ctx is None:
             return
-        viewer, text, place, _x, y = ctx
+        _viewer, text, _place, x, _y = ctx
         stripped = text.lstrip()
         pos = len(text) - len(stripped) if stripped else 0
-        self._jump_to_column(viewer, place, pos, y)
+        self._jump_to_column(x, pos)
 
     def _word_forward(self, widget, count):
         ctx = self._viewer_ctx()
         if ctx is None:
             return
-        viewer, text, place, x, y = ctx
+        _viewer, text, _place, x, _y = ctx
+        caret_x = x  # where the caret physically is (x tracks the target)
 
         for _ in range(count):
             starts = [m.start() for m in WORD_RE.finditer(text) if m.start() > x]
@@ -589,17 +606,19 @@ class VimEventFilter(QtCore.QObject):
                 ctx = self._viewer_ctx()
                 if ctx is None:
                     return
-                viewer, text, place, x, y = ctx
+                _viewer, text, _place, x, _y = ctx
+                caret_x = x
                 starts = [m.start() for m in WORD_RE.finditer(text)]
                 if starts:
                     x = starts[0]
-        self._jump_to_column(viewer, place, x, y)
+        self._jump_to_column(caret_x, x)
 
     def _word_end(self, widget, count):
         ctx = self._viewer_ctx()
         if ctx is None:
             return
-        viewer, text, place, x, y = ctx
+        _viewer, text, _place, x, _y = ctx
+        caret_x = x
 
         for _ in range(count):
             ends = [m.end() - 1 for m in WORD_RE.finditer(text) if m.end() - 1 > x]
@@ -612,17 +631,19 @@ class VimEventFilter(QtCore.QObject):
                 ctx = self._viewer_ctx()
                 if ctx is None:
                     return
-                viewer, text, place, x, y = ctx
+                _viewer, text, _place, x, _y = ctx
+                caret_x = x
                 ends = [m.end() - 1 for m in WORD_RE.finditer(text)]
                 if ends:
                     x = ends[0]
-        self._jump_to_column(viewer, place, x, y)
+        self._jump_to_column(caret_x, x)
 
     def _word_backward(self, widget, count):
         ctx = self._viewer_ctx()
         if ctx is None:
             return
-        viewer, text, place, x, y = ctx
+        _viewer, text, _place, x, _y = ctx
+        caret_x = x
 
         for _ in range(count):
             starts = [m.start() for m in WORD_RE.finditer(text) if m.start() < x]
@@ -635,15 +656,20 @@ class VimEventFilter(QtCore.QObject):
                 ctx = self._viewer_ctx()
                 if ctx is None:
                     return
-                viewer, text, place, x, y = ctx
+                _viewer, text, _place, x, _y = ctx
+                caret_x = x
                 starts = [m.start() for m in WORD_RE.finditer(text)]
                 if starts:
                     x = starts[-1]
-        self._jump_to_column(viewer, place, x, y)
+        self._jump_to_column(caret_x, x)
 
     # ------------------------------------------------------------------ #
     # search: / n N
     # ------------------------------------------------------------------ #
+
+    def _rename_under_cursor(self):
+        if not ida_kernwin.process_ui_action(HX_RENAME_ACTION):
+            ida_kernwin.msg("[idavim] nothing to rename here\n")
 
     def _prompt_goto_line(self):
         value = ida_kernwin.ask_long(1, "idavim: go to line")
