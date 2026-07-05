@@ -30,9 +30,10 @@ sync when keys change, and update the description in `ida-plugin.json` too.
   key is redelivered as a `KeyPress`, which we consume. Both event types must
   pass the same `_wants()` predicate. Order matters for performance: the
   filter evaluates `_wants(event) and _in_vim_context(event)` — `_wants`
-  makes NO IDA API calls (it reads the enabled flag, the Qt event and the
-  pending state, which it clears for keys that cannot complete a pending
-  command), so the IDA API probe (`_in_vim_context`) runs only for keys
+  makes NO IDA API calls (it reads the enabled flag, the Qt event, the
+  pending state — which it clears for keys that cannot complete a pending
+  command — and last_find, which keeps `;`/`,` with IDA until f/F has been
+  used), so the IDA API probe (`_in_vim_context`) runs only for keys
   idavim might claim, and a disabled idavim costs nothing per keystroke.
 - **Enable/disable, not vim modes**: a single boolean, deliberately not
   NORMAL/INSERT (two layers of state confused users). The toggle is a
@@ -68,6 +69,10 @@ sync when keys change, and update the description in `ida-plugin.json` too.
   depending on where they landed (first seen with h/l, again with `;`/`,`).
   `0`/`$` compute the target column and arrow-key to it instead of sending
   Home/End — IDA's own Home/End keep moving the cursor on repeated presses.
+  `_jump_to_column` reads the caret itself right before moving (callers
+  cannot pass a stale position) and the move is deliberately uncapped: a
+  cap silently landed long-line motions short, and both endpoints lie
+  within the current line, which bounds the synthetic-key burst anyway.
 - Never intercept keys when a modal widget is active, focus is in a text
   input, or the focus window is a QDialog; only act in `BWN_DISASM` /
   `BWN_PSEUDOCODE`, and in `BWN_DISASM` only when the renderer is
@@ -93,6 +98,10 @@ sync when keys change, and update the description in `ida-plugin.json` too.
   pseudocode-only gating lives in `_in_vim_context` (PSEUDOCODE_ONLY_KEYS,
   checked against the already-resolved widget type), NOT in `_wants` — that
   keeps `_wants` free of IDA API calls per the ordering invariant above.
+  The gate is SKIPPED while a prefix is pending: a pending f/F target must
+  always be consumed — `fc` in the disassembly view finds `c`; letting it
+  leak to IDA ran MakeCode (a destructive DB edit). Don't "simplify" the
+  `not self.pending` condition away.
 - **Known limitation, deliberately NOT fixed**: a bare count (digits typed
   with no pending prefix) is not cancelled by Esc — Esc passes to IDA
   (navigate back) and the count stays armed for the next motion. Reviewed

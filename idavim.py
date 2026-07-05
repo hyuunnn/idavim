@@ -55,7 +55,9 @@ VIM_KEYS = set("hjklGgudfFwbe0$^;,/nN123456789")
 # keys intercepted only in the pseudocode view. The check lives in
 # _in_vim_context (where the widget type is already resolved) so that
 # _wants stays free of IDA API calls: in the disassembly view ':' is IDA's
-# "enter comment" and 'c' is "make code" — they must stay with IDA there.
+# "enter comment" and 'c' is "make code" — they must stay with IDA there,
+# EXCEPT while a prefix is pending: the key is then an f/F target (or a
+# cancel) and must be consumed ("fc" must find 'c', not run MakeCode).
 PSEUDOCODE_ONLY_KEYS = set(":c")
 
 # Hex-Rays action invoked by cw (rename the item under the cursor)
@@ -284,6 +286,8 @@ class VimEventFilter(QtCore.QObject):
             target_line, self.pending_count = self.pending_count, 0
             if cmd in ("f", "F") and char.isprintable():
                 self.last_find = (cmd, char)
+                # always 1: counts deliberately do not compose with f/F
+                # (see the CLAUDE.md known limitations)
                 self._find_in_line(cmd, char, 1)
             elif cmd == "g" and char == "g":
                 if target_line:
@@ -422,7 +426,7 @@ class VimEventFilter(QtCore.QObject):
     # ------------------------------------------------------------------ #
 
     def _viewer_ctx(self):
-        """Returns (viewer, plain line text, place, x, y) or None."""
+        """Returns (plain line text, place, x, y) or None."""
         viewer = ida_kernwin.get_current_viewer()
         if viewer is None:
             return None
@@ -502,6 +506,8 @@ class VimEventFilter(QtCore.QObject):
         # simpleline_place_t cannot be constructed directly (abstract in the
         # bindings); clone the viewer's current place and retarget it instead
         viewer = ida_kernwin.get_current_viewer()
+        if viewer is None:
+            return  # the :30 prompt path runs outside eventFilter's except
         result = ida_kernwin.get_custom_viewer_place(viewer, False)
         if not result:
             return
