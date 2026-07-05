@@ -549,6 +549,27 @@ class VimEventFilter(QtCore.QObject):
             return
         target.n = lineno
         ida_kernwin.jumpto(viewer, target, x, y)
+        self._nudge_sync(lineno)
+
+    def _nudge_sync(self, lineno):
+        """Native Down+Up pair (net movement: zero) after a programmatic
+        jump: IDA's "Synchronize with" follows only the real key input
+        path, so the jump alone leaves synced views unscrolled. The nudge
+        replays the input IDA listens to."""
+        if not self._is_pseudocode():
+            return  # deferred prompt paths (:{n}, /): view may have changed
+        widget = QtWidgets.QApplication.focusWidget()
+        if widget is None:
+            return
+        total = self._pseudocode_size()
+        if total <= 1:
+            return
+        if lineno >= total - 1:
+            keys = (Qt.Key.Key_Up, Qt.Key.Key_Down)
+        else:
+            keys = (Qt.Key.Key_Down, Qt.Key.Key_Up)
+        for key in keys:
+            self._send_key(widget, key)
 
     # ------------------------------------------------------------------ #
     # gg / G

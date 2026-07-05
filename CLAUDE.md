@@ -61,6 +61,16 @@ and the `ida-plugin.json` description in sync when keys change.
   of `j/k/d/u`) clamp the count at `MOTION_LIMIT` WITH a message so a
   runaway count can't freeze the UI; pseudocode `j/k` is exact arithmetic,
   uncapped.
+- **Synced-view follow**: IDA's "Synchronize with" reacts to real key
+  input ONLY — programmatic jumps (`jumpto`, `custom_viewer_jump`,
+  `refresh_cpos`) repaint the partner's highlight but never scroll it,
+  and driving the partner view directly via the API feeds back (its jump
+  reciprocally yanks this view's caret to the address's first line, then
+  a queued counter-move clobbers the drive; measure with the partner's
+  scrollbar/caret, never the highlight). So every pseudocode jump ends
+  with `_nudge_sync`: a native Down+Up pair, net movement zero, order
+  flipped on the last line — replaying the one input IDA listens to.
+  Sync on/off is honored automatically because IDA itself decides.
 - **Cap the work, not the count** (`{n}n`/`{n}N`): pseudocode collects all
   match positions once per command and picks modularly (any count exact —
   one scan, one jumpto); disassembly spends one `DISASM_SEARCH_LIMIT` item
