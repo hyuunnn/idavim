@@ -1,6 +1,6 @@
 # idavim
 
-![idavim](idavim.png)
+![idavim](ida-plugin.png)
 
 **English** | [한국어](README_ko.md)
 
