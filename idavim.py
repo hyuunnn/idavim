@@ -262,9 +262,9 @@ class VimEventFilter(QtCore.QObject):
         text = event.text()
         if not text:
             # text-less keys (arrows, PgUp/PgDn, Home/End, F-keys) abandon a
-            # half-typed command just like other non-completing keys do,
+            # half-typed command — the pending prefix AND a bare count —
             # while still reaching IDA; bare modifier presses do not
-            if self.pending and event.key() not in MODIFIER_KEYS:
+            if event.key() not in MODIFIER_KEYS:
                 self._reset_pending()
             return False
 

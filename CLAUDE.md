@@ -91,7 +91,7 @@ and the `ida-plugin.json` description in sync when keys change.
   ARE supported in pseudocode; the disassembly listing has no line numbers,
   so counts fall back to plain gg/G there.
 - A bare count is not cancelled by Esc (Esc = IDA's navigate back); it is
-  cleared by any motion, focus change, or toggle.
+  cleared by any motion, text-less key, focus change, or toggle.
 - acquire_filter is not atomic and the j/k hot path re-resolves the
   widget/viewer 2-3x per press — no realistic trigger / microsecond cost.
 - w/e/b wrapping at the listing's first/last line lands on the wrong word
