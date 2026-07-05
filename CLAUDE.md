@@ -73,6 +73,11 @@ sync when keys change, and update the description in `ida-plugin.json` too.
   cannot pass a stale position) and the move is deliberately uncapped: a
   cap silently landed long-line motions short, and both endpoints lie
   within the current line, which bounds the synthetic-key burst anyway.
+  Motions that do real work per repeat — `w/e/b` iterations and the
+  disassembly head-walk of `j/k/d/u` — clamp the count at `MOTION_LIMIT`
+  (10000) WITH a message (`_capped_count`), so a runaway count from a
+  held-down digit key cannot freeze the UI; pseudocode `j/k` stays exact
+  arithmetic and is not capped.
 - **`{n}n`/`{n}N` cap the work, not the count**: the pseudocode view
   collects every match position once per command and picks the target with
   modular index arithmetic (any count is exact — one scan, one jumpto); the

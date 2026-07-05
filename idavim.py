@@ -49,6 +49,13 @@ VIM_WIDGET_TYPES = (
 # the count (the pseudocode view searches all lines and wraps instead)
 DISASM_SEARCH_LIMIT = 50000
 
+# cap for one counted motion that does real work per repeat: w/e/b
+# iterations and the disassembly head-walk of j/k/d/u. A runaway count
+# (held-down digit key) must not freeze the UI; the cap is reported, never
+# silent. Pseudocode j/k/gg/G and {n}n/N are exact arithmetic per command
+# and stay uncapped.
+MOTION_LIMIT = 10000
+
 # characters handled while idavim is enabled (without a pending prefix key).
 # `i` is deliberately absent: it is IDA's "insert comment line" in the
 # disassembly view
@@ -129,6 +136,14 @@ class VimEventFilter(QtCore.QObject):
         except ValueError:
             count = 1
         self.count = ""
+        return count
+
+    def _capped_count(self, count):
+        """Clamp a per-repeat-work motion's count to MOTION_LIMIT, with a
+        message — a silent cap lands motions short (a known bug class)."""
+        if count > MOTION_LIMIT:
+            ida_kernwin.msg(f"[idavim] count capped at {MOTION_LIMIT}\n")
+            return MOTION_LIMIT
         return count
 
     # ------------------------------------------------------------------ #
@@ -335,11 +350,11 @@ class VimEventFilter(QtCore.QObject):
         elif char == "^":
             self._goto_first_nonblank()
         elif char == "w":
-            self._word_forward(widget, count)
+            self._word_forward(widget, self._capped_count(count))
         elif char == "e":
-            self._word_end(widget, count)
+            self._word_end(widget, self._capped_count(count))
         elif char == "b":
-            self._word_backward(widget, count)
+            self._word_backward(widget, self._capped_count(count))
         elif char in ("f", "F"):
             self.pending = char
         elif char == "c":
@@ -403,7 +418,9 @@ class VimEventFilter(QtCore.QObject):
         ea = cur.ea
         min_ea = ida_ida.inf_get_min_ea()
         max_ea = ida_ida.inf_get_max_ea()
-        for _ in range(count):
+        # each repeat is an IDA head-walk (unlike the pseudocode branch's
+        # O(1) arithmetic above), so a runaway count is capped here
+        for _ in range(self._capped_count(count)):
             if direction > 0:
                 nxt = ida_bytes.next_head(ea, max_ea)
             else:
