@@ -52,12 +52,10 @@ DISASM_SEARCH_LIMIT = 50000
 # disassembly view
 VIM_KEYS = set("hjklGgudfFwbe0$^;,/nN123456789")
 
-# keys intercepted only in the pseudocode view. The check lives in
-# _in_vim_context (where the widget type is already resolved) so that
-# _wants stays free of IDA API calls: in the disassembly view ':' is IDA's
-# "enter comment" and 'c' is "make code" — they must stay with IDA there,
-# EXCEPT while a prefix is pending: the key is then an f/F target (or a
-# cancel) and must be consumed ("fc" must find 'c', not run MakeCode).
+# keys intercepted only in the pseudocode view: in the disassembly view ':'
+# is IDA's "enter comment" and 'c' is "make code". The gate lives in
+# _in_vim_context (where the widget type is already resolved, keeping
+# _wants free of IDA API calls) — see it for the pending-prefix exception.
 PSEUDOCODE_ONLY_KEYS = set(":c")
 
 # Hex-Rays action invoked by cw (rename the item under the cursor)
@@ -145,10 +143,10 @@ class VimEventFilter(QtCore.QObject):
 
         try:
             # cheap checks first: _wants makes NO IDA API calls (it reads
-            # the enabled flag, the Qt event and the pending state — which
-            # it clears for keys that cannot complete a pending command),
-            # so the IDA API probe in _in_vim_context runs only for keys
-            # idavim might actually claim
+            # the enabled flag, the Qt event, the pending state — which it
+            # clears for keys that cannot complete a pending command — and
+            # last_find), so the IDA API probe in _in_vim_context runs only
+            # for keys idavim might actually claim
             wanted = self._wants(event) and self._in_vim_context(event)
 
             if logger.isEnabledFor(logging.DEBUG) and etype == QEvent.Type.KeyPress:
@@ -507,7 +505,7 @@ class VimEventFilter(QtCore.QObject):
         # bindings); clone the viewer's current place and retarget it instead
         viewer = ida_kernwin.get_current_viewer()
         if viewer is None:
-            return  # the :30 prompt path runs outside eventFilter's except
+            return  # deferred prompt paths (:{n}, /) run outside eventFilter's except
         result = ida_kernwin.get_custom_viewer_place(viewer, False)
         if not result:
             return
