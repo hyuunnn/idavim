@@ -1,8 +1,8 @@
 """idavim - vim-style keyboard navigation for IDA Pro.
 
-Provides modal vim-like navigation (hjkl, f, /, n, u/d half-page scrolling,
-gg/G, counts, word motions) in the disassembly and Hex-Rays pseudocode views,
-similar to Vimium / IdeaVim.
+Provides vim-like navigation (hjkl, f, /, n, u/d half-page scrolling,
+gg/G, counts, word motions, cw rename) in the disassembly and Hex-Rays
+pseudocode views, similar to Vimium / IdeaVim.
 
 Keys are intercepted with an application-level Qt event filter so they take
 priority over IDA's own single-key shortcuts (n, d, u, g, ...) while idavim
