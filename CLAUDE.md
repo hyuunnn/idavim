@@ -61,6 +61,10 @@ sync when keys change, and update the description in `ida-plugin.json` too.
   input, or the focus window is a QDialog; only act in `BWN_DISASM` /
   `BWN_PSEUDOCODE`, and in `BWN_DISASM` only when the renderer is
   `TCCRT_FLAT` (graph mode is left entirely to IDA).
+- Half-typed command state (pending f/F/g target, count prefix) is abandoned
+  on any focus change (`QApplication.focusChanged`), so a stale prefix never
+  hijacks a key pressed after the user worked elsewhere. Completed-command
+  state (last_find for `;`/`,`, the `/` search pattern) survives.
 
 ## Environment facts
 

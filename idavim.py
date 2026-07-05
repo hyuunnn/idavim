@@ -93,6 +93,12 @@ class VimEventFilter(QtCore.QObject):
         self.pending = ""
         self.count = ""
 
+    def _on_focus_changed(self, _old, _new):
+        # moving focus abandons a half-typed command: a pending f/F/g target
+        # or count prefix must not hijack a key pressed much later. The
+        # completed-command state (last_find, search) is kept.
+        self._reset_pending()
+
     def _take_count(self):
         try:
             count = max(1, int(self.count))
@@ -630,6 +636,7 @@ def acquire_filter():
         app = QtWidgets.QApplication.instance()
         if app is not None:
             app.installEventFilter(_filter)
+            app.focusChanged.connect(_filter._on_focus_changed)
     _filter_refs += 1
     return _filter
 
@@ -640,6 +647,10 @@ def release_filter():
     if _filter_refs <= 0 and _filter is not None:
         app = QtWidgets.QApplication.instance()
         if app is not None:
+            try:
+                app.focusChanged.disconnect(_filter._on_focus_changed)
+            except (RuntimeError, TypeError):
+                pass  # already disconnected during teardown
             app.removeEventFilter(_filter)
         _filter = None
         _filter_refs = 0
