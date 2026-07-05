@@ -21,7 +21,7 @@ idavim is modal, like vim:
 
 Mode changes are printed to the Output window (`[idavim] -- NORMAL --` / `-- INSERT --`), so check there when unsure which mode you are in.
 
-Keys are intercepted with an application-level Qt event filter, so nothing is stolen from dialogs, the CLI input, or any other text field — only the listing views are affected.
+Keys are intercepted with an application-level Qt event filter, so nothing is stolen from dialogs, the CLI input, or any other text field — only the listing views are affected. Graph-mode disassembly is also left entirely to IDA (line-oriented motions make no sense there).
 
 ## Keys (NORMAL mode)
 

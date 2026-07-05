@@ -168,7 +168,20 @@ class VimEventFilter(QtCore.QObject):
         widget = ida_kernwin.get_current_widget()
         if widget is None:
             return False
-        return ida_kernwin.get_widget_type(widget) in VIM_WIDGET_TYPES
+        widget_type = ida_kernwin.get_widget_type(widget)
+        if widget_type not in VIM_WIDGET_TYPES:
+            return False
+
+        # stay out of graph (and proximity) mode: line-oriented motions make
+        # no sense there, so leave every key to IDA
+        if widget_type == ida_kernwin.BWN_DISASM:
+            viewer = ida_kernwin.get_current_viewer()
+            if viewer is not None and ida_kernwin.get_view_renderer_type(
+                viewer
+            ) != ida_kernwin.TCCRT_FLAT:
+                return False
+
+        return True
 
     def _wants(self, event):
         mods = event.modifiers()
