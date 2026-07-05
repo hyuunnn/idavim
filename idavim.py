@@ -199,9 +199,13 @@ class VimEventFilter(QtCore.QObject):
         if widget_type not in VIM_WIDGET_TYPES:
             return False
 
-        # pseudocode-only keys stay with IDA everywhere else
+        # pseudocode-only keys stay with IDA everywhere else — but never
+        # while a prefix is pending: the key is then an f/F target (or a
+        # cancel) and must be consumed, not leaked to IDA ("fc" in the
+        # disassembly view must find 'c', not run MakeCode)
         if (
-            event.text() in PSEUDOCODE_ONLY_KEYS
+            not self.pending
+            and event.text() in PSEUDOCODE_ONLY_KEYS
             and widget_type != ida_kernwin.BWN_PSEUDOCODE
         ):
             return False
