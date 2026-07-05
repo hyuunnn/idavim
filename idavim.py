@@ -265,9 +265,9 @@ class VimEventFilter(QtCore.QObject):
         elif char == "G":
             self._goto_bottom()
         elif char == "0":
-            self._send_key(widget, Qt.Key.Key_Home)
+            self._goto_line_start()
         elif char == "$":
-            self._send_key(widget, Qt.Key.Key_End)
+            self._goto_line_end()
         elif char == "^":
             self._goto_first_nonblank()
         elif char == "w":
@@ -447,6 +447,21 @@ class VimEventFilter(QtCore.QObject):
         if char == ",":
             cmd = "F" if cmd == "f" else "f"
         self._find_in_line(cmd, target, count)
+
+    def _goto_line_start(self):
+        ctx = self._viewer_ctx()
+        if ctx is None:
+            return
+        viewer, _text, place, _x, y = ctx
+        self._jump_to_column(viewer, place, 0, y)
+
+    def _goto_line_end(self):
+        ctx = self._viewer_ctx()
+        if ctx is None:
+            return
+        viewer, text, place, _x, y = ctx
+        pos = max(0, len(text.rstrip()) - 1)
+        self._jump_to_column(viewer, place, pos, y)
 
     def _goto_first_nonblank(self):
         ctx = self._viewer_ctx()
