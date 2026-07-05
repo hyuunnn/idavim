@@ -117,9 +117,17 @@ class VimEventFilter(QtCore.QObject):
             return False
 
         try:
-            if not self._in_vim_context():
-                return False
-            if not self._wants(event):
+            in_context = self._in_vim_context()
+            wanted = in_context and self._wants(event)
+
+            if logger.isEnabledFor(logging.DEBUG) and etype == QEvent.Type.KeyPress:
+                logger.debug(
+                    "key=0x%x text=%r mode=%s pending=%r in_context=%s wanted=%s",
+                    event.key(), event.text(), self.mode, self.pending,
+                    in_context, wanted,
+                )
+
+            if not wanted:
                 return False
 
             if etype == QEvent.Type.ShortcutOverride:
@@ -128,7 +136,7 @@ class VimEventFilter(QtCore.QObject):
                 event.accept()
                 return True
 
-            return self._handle(obj, event)
+            return self._handle(event)
         except Exception:
             logger.exception("idavim key handling failed")
             return False
@@ -169,9 +177,14 @@ class VimEventFilter(QtCore.QObject):
         meta = bool(mods & Qt.KeyboardModifier.MetaModifier)
 
         if self.mode == MODE_INSERT:
-            # only the "back to NORMAL" chords are intercepted
-            # (on macOS Qt maps the physical Ctrl key to MetaModifier)
-            if (ctrl or meta) and event.key() == Qt.Key.Key_BracketLeft:
+            # only the "back to NORMAL" chords are intercepted.
+            # macOS quirks: the physical Ctrl key maps to MetaModifier, and
+            # Ctrl+[ produces the ESC control character, so it may arrive as
+            # Key_Escape instead of Key_BracketLeft.
+            if (ctrl or meta) and event.key() in (
+                Qt.Key.Key_BracketLeft,
+                Qt.Key.Key_Escape,
+            ):
                 return True
             if event.key() == Qt.Key.Key_Escape and bool(
                 mods & Qt.KeyboardModifier.ShiftModifier
@@ -199,7 +212,13 @@ class VimEventFilter(QtCore.QObject):
     # key dispatch
     # ------------------------------------------------------------------ #
 
-    def _handle(self, widget, event):
+    def _handle(self, event):
+        # in Qt6 key events can be delivered to the top-level QWindow rather
+        # than the widget, so always resolve the real focus widget ourselves
+        widget = QtWidgets.QApplication.focusWidget()
+        if widget is None:
+            return False
+
         if self.mode == MODE_INSERT:
             self._set_mode(MODE_NORMAL)
             return True
@@ -287,7 +306,10 @@ class VimEventFilter(QtCore.QObject):
             self._synthesizing = False
 
     def _half_page(self, widget):
-        line_height = widget.fontMetrics().height() or 16
+        try:
+            line_height = widget.fontMetrics().height() or 16
+        except AttributeError:
+            line_height = 16
         return max(1, widget.height() // line_height // 2)
 
     # ------------------------------------------------------------------ #
@@ -321,9 +343,18 @@ class VimEventFilter(QtCore.QObject):
         return [ida_lines.tag_remove(sl.line) for sl in vdui.cfunc.get_pseudocode()]
 
     def _jump_pseudocode_line(self, lineno, x=0, y=0):
+        # simpleline_place_t cannot be constructed directly (abstract in the
+        # bindings); clone the viewer's current place and retarget it instead
         viewer = ida_kernwin.get_current_viewer()
-        place = ida_kernwin.simpleline_place_t(lineno)
-        ida_kernwin.jumpto(viewer, place, x, y)
+        result = ida_kernwin.get_custom_viewer_place(viewer, False)
+        if not result:
+            return
+        place, _x, _y = result
+        target = ida_kernwin.place_t_as_simpleline_place_t(place.clone())
+        if target is None:
+            return
+        target.n = lineno
+        ida_kernwin.jumpto(viewer, target, x, y)
 
     # ------------------------------------------------------------------ #
     # gg / G
@@ -533,6 +564,36 @@ class VimEventFilter(QtCore.QObject):
         return False
 
 
+# The event filter must be a process-wide singleton. IDA may create a new
+# plugmod per database without the previous one being torn down first; if two
+# filters were installed at once, the stale one would keep intercepting keys
+# with its own (stale) mode. Reference counting keeps install/remove balanced.
+_filter = None
+_filter_refs = 0
+
+
+def acquire_filter():
+    global _filter, _filter_refs
+    if _filter is None:
+        _filter = VimEventFilter()
+        app = QtWidgets.QApplication.instance()
+        if app is not None:
+            app.installEventFilter(_filter)
+    _filter_refs += 1
+    return _filter
+
+
+def release_filter():
+    global _filter, _filter_refs
+    _filter_refs -= 1
+    if _filter_refs <= 0 and _filter is not None:
+        app = QtWidgets.QApplication.instance()
+        if app is not None:
+            app.removeEventFilter(_filter)
+        _filter = None
+        _filter_refs = 0
+
+
 class toggle_action_handler_t(ida_kernwin.action_handler_t):
     def __init__(self, event_filter, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -554,11 +615,7 @@ class idavim_plugmod_t(ida_idaapi.plugmod_t):
         self.init()
 
     def init(self):
-        self.event_filter = VimEventFilter()
-        app = QtWidgets.QApplication.instance()
-        if app is not None:
-            app.installEventFilter(self.event_filter)
-
+        self.event_filter = acquire_filter()
         self.register_actions()
         logger.info("idavim loaded: NORMAL mode active (i: insert, Ctrl+[: normal, Ctrl-Shift-V: toggle)")
 
@@ -586,10 +643,8 @@ class idavim_plugmod_t(ida_idaapi.plugmod_t):
         try:
             self.unregister_actions()
             if self.event_filter is not None:
-                app = QtWidgets.QApplication.instance()
-                if app is not None:
-                    app.removeEventFilter(self.event_filter)
                 self.event_filter = None
+                release_filter()
         except Exception:
             logger.exception("idavim teardown failed")
 
