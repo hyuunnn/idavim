@@ -38,10 +38,12 @@ sync when keys change, and update the description in `ida-plugin.json` too.
   MakeExtraLineA (insert comment line) in the disassembly view. `Ctrl+[`
   was removed because macOS turns it into ESC (conflicts with IDA's Esc =
   navigate back) and `Cmd+[` is IDA's own back-navigation.
-- **Singleton filter**: the filter is a refcounted module-level singleton.
-  IDA can create a new plugmod per database without tearing down the old one
-  first; two live filters desync their enabled state and a stale one keeps
-  stealing keys after the active one was disabled.
+- **Singleton filter AND action**: the filter and the `idavim:toggle` action
+  registration are one refcounted module-level singleton (both live in
+  acquire_filter/release_filter). IDA can create a new plugmod per database
+  without tearing down the old one first; per-plugmod ownership let a stale
+  plugmod's `__del__` unregister the action the live plugmod had just
+  re-registered (Shift+Esc dead while keys were still intercepted).
 - **Qt6 quirks**: key events may be delivered to the top-level `QWindow`
   (no `fontMetrics`), so the handler resolves `QApplication.focusWidget()`
   itself. On macOS Qt maps physical Ctrl to `MetaModifier` and Cmd to

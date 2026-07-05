@@ -640,10 +640,13 @@ class VimEventFilter(QtCore.QObject):
         return False
 
 
-# The event filter must be a process-wide singleton. IDA may create a new
-# plugmod per database without the previous one being torn down first; if two
-# filters were installed at once, the stale one would keep intercepting keys
-# with its own (stale) mode. Reference counting keeps install/remove balanced.
+# The event filter and the toggle action are process-wide singletons. IDA may
+# create a new plugmod per database without the previous one being torn down
+# first; per-plugmod ownership would let a stale plugmod's teardown remove the
+# filter or the action the live plugmod still uses. Reference counting keeps
+# install/remove balanced for both.
+ACTION_TOGGLE = "idavim:toggle"
+
 _filter = None
 _filter_refs = 0
 
@@ -656,6 +659,18 @@ def acquire_filter():
         if app is not None:
             app.installEventFilter(_filter)
             app.focusChanged.connect(_filter._on_focus_changed)
+
+        ida_kernwin.unregister_action(ACTION_TOGGLE)
+        ida_kernwin.register_action(
+            ida_kernwin.action_desc_t(
+                ACTION_TOGGLE,
+                "idavim: toggle",
+                toggle_action_handler_t(_filter),
+                "Shift-Esc",
+                "Enable or disable idavim keyboard handling",
+                -1,
+            )
+        )
     _filter_refs += 1
     return _filter
 
@@ -664,6 +679,7 @@ def release_filter():
     global _filter, _filter_refs
     _filter_refs -= 1
     if _filter_refs <= 0 and _filter is not None:
+        ida_kernwin.unregister_action(ACTION_TOGGLE)
         app = QtWidgets.QApplication.instance()
         if app is not None:
             try:
@@ -689,32 +705,13 @@ class toggle_action_handler_t(ida_kernwin.action_handler_t):
 
 
 class idavim_plugmod_t(ida_idaapi.plugmod_t):
-    ACTION_TOGGLE = "idavim:toggle"
-
     def __init__(self):
         self.event_filter = None
         self.init()
 
     def init(self):
         self.event_filter = acquire_filter()
-        self.register_actions()
         logger.info("idavim loaded and enabled (Shift+Esc: toggle)")
-
-    def register_actions(self):
-        ida_kernwin.unregister_action(self.ACTION_TOGGLE)
-        ida_kernwin.register_action(
-            ida_kernwin.action_desc_t(
-                self.ACTION_TOGGLE,
-                "idavim: toggle",
-                toggle_action_handler_t(self.event_filter),
-                "Shift-Esc",
-                "Enable or disable idavim keyboard handling",
-                -1,
-            )
-        )
-
-    def unregister_actions(self):
-        ida_kernwin.unregister_action(self.ACTION_TOGGLE)
 
     def run(self, arg):
         if self.event_filter is not None:
@@ -722,7 +719,6 @@ class idavim_plugmod_t(ida_idaapi.plugmod_t):
 
     def __del__(self):
         try:
-            self.unregister_actions()
             if self.event_filter is not None:
                 self.event_filter = None
                 release_filter()
