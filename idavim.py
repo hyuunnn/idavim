@@ -260,20 +260,14 @@ class VimEventFilter(QtCore.QObject):
         alt = bool(mods & Qt.KeyboardModifier.AltModifier)
         meta = bool(mods & Qt.KeyboardModifier.MetaModifier)
 
-        if ctrl or alt or meta:
-            # a chord cannot complete a pending command or extend a count;
-            # abandon the half-typed state so a stale prefix or count
-            # doesn't hijack a later plain key (bare modifier presses
-            # excepted, same as the text-less branch below)
-            if event.key() not in MODIFIER_KEYS:
-                self._reset_pending()
-            return False
-
         text = event.text()
-        if not text:
-            # text-less keys (arrows, PgUp/PgDn, Home/End, F-keys) abandon a
-            # half-typed command — the pending prefix AND a bare count —
-            # while still reaching IDA; bare modifier presses do not
+        if ctrl or alt or meta or not text:
+            # chords and text-less keys (arrows, PgUp/PgDn, Home/End,
+            # F-keys) cannot complete a pending command or extend a count;
+            # abandon the half-typed state so it doesn't hijack a later
+            # plain key — while the key still reaches IDA. Bare modifier
+            # presses excepted: Shift is held while typing an uppercase
+            # f-target.
             if event.key() not in MODIFIER_KEYS:
                 self._reset_pending()
             return False
@@ -556,8 +550,6 @@ class VimEventFilter(QtCore.QObject):
         jump: IDA's "Synchronize with" follows only the real key input
         path, so the jump alone leaves synced views unscrolled. The nudge
         replays the input IDA listens to."""
-        if not self._is_pseudocode():
-            return  # deferred prompt paths (:{n}, /): view may have changed
         widget = QtWidgets.QApplication.focusWidget()
         if widget is None:
             return
