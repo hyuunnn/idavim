@@ -241,15 +241,17 @@ class VimEventFilter(QtCore.QObject):
         return True
 
     def _wants(self, event):
+        # while disabled nothing is intercepted; the toggle itself is a
+        # registered IDA action ("idavim:toggle", Shift-Esc), not a filter
+        # key. This check comes first so a disabled idavim does no per-key
+        # work at all.
+        if not self.enabled:
+            return False
+
         mods = event.modifiers()
         ctrl = bool(mods & Qt.KeyboardModifier.ControlModifier)
         alt = bool(mods & Qt.KeyboardModifier.AltModifier)
         meta = bool(mods & Qt.KeyboardModifier.MetaModifier)
-
-        # while disabled nothing is intercepted; the toggle itself is a
-        # registered IDA action ("idavim:toggle", Shift-Esc), not a filter key
-        if not self.enabled:
-            return False
 
         if ctrl or alt or meta:
             # a chord cannot complete a pending command; abandon it so the
