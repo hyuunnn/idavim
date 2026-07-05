@@ -16,8 +16,10 @@ idavim은 vim처럼 모달(modal) 방식으로 동작합니다:
 | 동작 | 키 |
 |---|---|
 | INSERT(통과) 모드 진입 | `i` |
-| NORMAL 모드 복귀 | `Ctrl+[` 또는 `Shift+Esc` (macOS: `⌃[`, `⌘[` 모두 가능) |
-| idavim 전체 켜기/끄기 | `Ctrl+Shift+V` (또는 Edit → Plugins → idavim) |
+| NORMAL 모드 복귀 | `Shift+Esc` (일반 `Esc`는 IDA "뒤로 가기"로 그대로 동작) |
+| idavim 전체 켜기/끄기 | `Ctrl+Shift+V` (macOS: `⌘⇧V`, 또는 Edit → Plugins → idavim) |
+
+모드가 바뀔 때마다 Output 창에 `[idavim] -- NORMAL --` / `-- INSERT --` 메시지가 출력되므로, 현재 모드가 헷갈릴 땐 Output 창을 확인하세요.
 
 키 가로채기는 애플리케이션 레벨 Qt 이벤트 필터로 구현되어 있어서, 다이얼로그·CLI 입력창·기타 텍스트 입력에서는 키를 절대 빼앗지 않습니다 — 리스팅 뷰에서만 동작합니다.
 
@@ -55,19 +57,14 @@ idavim은 vim처럼 모달(modal) 방식으로 동작합니다:
 
 ## 설치
 
-[IDA Plugin Manager](https://plugins.hex-rays.com/) 사용:
+리포지토리를 클론하고 IDA 플러그인 디렉토리에 심볼릭 링크를 만듭니다:
 
 ```sh
-hcli plugin install idavim
+git clone https://github.com/hyuunnn/idavim.git
+ln -s "$(pwd)/idavim" ~/.idapro/plugins/idavim
 ```
 
-수동 설치: `idavim_entry.py`, `idavim.py`, `ida-plugin.json`을 IDA 플러그인 디렉토리 아래 `idavim/` 폴더에 복사합니다 (예: `~/.idapro/plugins/idavim/`).
-
-개발용으로는 리포를 심볼릭 링크로 연결해도 됩니다:
-
-```sh
-ln -sfn /path/to/idavim ~/.idapro/plugins/idavim
-```
+그 다음 IDA를 재시작하면 됩니다.
 
 ## 라이선스
 

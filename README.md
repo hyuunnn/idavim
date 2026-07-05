@@ -1,6 +1,6 @@
 # idavim
 
-**English** | [한국어](README.ko.md)
+**English** | [한국어](README_ko.md)
 
 Vim-style keyboard navigation for IDA Pro, inspired by [Vimium](https://github.com/philc/vimium) and [IdeaVim](https://github.com/JetBrains/ideavim).
 
@@ -16,8 +16,10 @@ idavim is modal, like vim:
 | Action | Key |
 |---|---|
 | Enter INSERT (passthrough) mode | `i` |
-| Back to NORMAL mode | `Ctrl+[` or `Shift+Esc` (macOS: `⌃[` or `⌘[` both work) |
-| Enable/disable idavim entirely | `Ctrl+Shift+V` (or Edit → Plugins → idavim) |
+| Back to NORMAL mode | `Shift+Esc` (plain `Esc` stays with IDA's "navigate back") |
+| Enable/disable idavim entirely | `Ctrl+Shift+V` (macOS: `⌘⇧V`, or Edit → Plugins → idavim) |
+
+Mode changes are printed to the Output window (`[idavim] -- NORMAL --` / `-- INSERT --`), so check there when unsure which mode you are in.
 
 Keys are intercepted with an application-level Qt event filter, so nothing is stolen from dialogs, the CLI input, or any other text field — only the listing views are affected.
 
@@ -55,19 +57,14 @@ Everything else (`Esc`, `Enter`, `x`, `Space`, arrows, ...) is passed through to
 
 ## Installation
 
-Via the [IDA Plugin Manager](https://plugins.hex-rays.com/):
+Clone the repository and symlink it into your IDA plugins directory:
 
 ```sh
-hcli plugin install idavim
+git clone https://github.com/hyuunnn/idavim.git
+ln -s "$(pwd)/idavim" ~/.idapro/plugins/idavim
 ```
 
-Or manually: copy `idavim_entry.py`, `idavim.py` and `ida-plugin.json` into a `idavim/` directory inside your IDA plugins directory (e.g. `~/.idapro/plugins/idavim/`).
-
-For development, a symlink to the repository works too:
-
-```sh
-ln -sfn /path/to/idavim ~/.idapro/plugins/idavim
-```
+Then restart IDA.
 
 ## License
 

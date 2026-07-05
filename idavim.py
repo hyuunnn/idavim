@@ -7,7 +7,7 @@ similar to Vimium / IdeaVim.
 Keys are intercepted with an application-level Qt event filter so they take
 priority over IDA's own single-key shortcuts (n, d, u, g, ...) while NORMAL
 mode is active. Press `i` to enter INSERT (passthrough) mode and use IDA's
-native keys; press Ctrl+[ (or Shift+Esc) to return to NORMAL mode.
+native keys; press Shift+Esc to return to NORMAL mode.
 """
 
 import logging
@@ -177,15 +177,8 @@ class VimEventFilter(QtCore.QObject):
         meta = bool(mods & Qt.KeyboardModifier.MetaModifier)
 
         if self.mode == MODE_INSERT:
-            # only the "back to NORMAL" chords are intercepted.
-            # macOS quirks: the physical Ctrl key maps to MetaModifier, and
-            # Ctrl+[ produces the ESC control character, so it may arrive as
-            # Key_Escape instead of Key_BracketLeft.
-            if (ctrl or meta) and event.key() in (
-                Qt.Key.Key_BracketLeft,
-                Qt.Key.Key_Escape,
-            ):
-                return True
+            # only the "back to NORMAL" chord is intercepted; a plain Esc
+            # stays with IDA (navigate back) and Shift+Esc is unused by IDA
             if event.key() == Qt.Key.Key_Escape and bool(
                 mods & Qt.KeyboardModifier.ShiftModifier
             ):
@@ -243,17 +236,17 @@ class VimEventFilter(QtCore.QObject):
         count = self._take_count()
 
         if char == "h":
-            self._send_key(widget, Qt.Key.Key_Left, count)
+            self._send_key(widget, Qt.Key.Key_Left, min(count, 128))
         elif char == "j":
-            self._send_key(widget, Qt.Key.Key_Down, count)
+            self._move_lines(count, 1)
         elif char == "k":
-            self._send_key(widget, Qt.Key.Key_Up, count)
+            self._move_lines(count, -1)
         elif char == "l":
-            self._send_key(widget, Qt.Key.Key_Right, count)
+            self._send_key(widget, Qt.Key.Key_Right, min(count, 128))
         elif char == "d":
-            self._send_key(widget, Qt.Key.Key_Down, count * self._half_page(widget))
+            self._move_lines(count * self._half_page(widget), 1)
         elif char == "u":
-            self._send_key(widget, Qt.Key.Key_Up, count * self._half_page(widget))
+            self._move_lines(count * self._half_page(widget), -1)
         elif char == "g":
             self.pending = "g"
         elif char == "G":
@@ -304,6 +297,43 @@ class VimEventFilter(QtCore.QObject):
                 QtWidgets.QApplication.sendEvent(widget, release)
         finally:
             self._synthesizing = False
+
+    def _move_lines(self, count, direction):
+        """Move the cursor `count` lines down (direction=1) or up (-1).
+
+        Jumps straight to the computed target: exact line arithmetic in the
+        pseudocode view, item heads in the disassembly view (an item that
+        renders as several display lines counts as one, which is fine for
+        rough vim-style movement).
+        """
+        ctx = self._viewer_ctx()
+        if ctx is None:
+            return
+        _viewer, _text, place, x, y = ctx
+
+        widget = ida_kernwin.get_current_widget()
+        if ida_kernwin.get_widget_type(widget) == ida_kernwin.BWN_PSEUDOCODE:
+            lines = self._pseudocode_lines()
+            if not lines:
+                return
+            cur = ida_kernwin.place_t_as_simpleline_place_t(place).n
+            target = min(max(cur + direction * count, 0), len(lines) - 1)
+            self._jump_pseudocode_line(target, x, y)
+            return
+
+        ea = ida_kernwin.place_t_as_idaplace_t(place).ea
+        min_ea = ida_ida.inf_get_min_ea()
+        max_ea = ida_ida.inf_get_max_ea()
+        for _ in range(count):
+            if direction > 0:
+                nxt = ida_bytes.next_head(ea, max_ea)
+            else:
+                nxt = ida_bytes.prev_head(ea, min_ea)
+            if nxt == ida_idaapi.BADADDR:
+                break
+            ea = nxt
+        # plain movement must not pollute the Esc navigation history
+        ida_kernwin.jumpto(ea, -1, ida_kernwin.UIJMP_DONTPUSH)
 
     def _half_page(self, widget):
         try:
@@ -393,6 +423,7 @@ class VimEventFilter(QtCore.QObject):
             else:
                 pos = text.rfind(char, 0, max(0, pos))
             if pos < 0:
+                ida_kernwin.msg(f"[idavim] {char!r} not found in line\n")
                 return
         self._jump_to_column(viewer, place, pos, y)
 
@@ -496,7 +527,9 @@ class VimEventFilter(QtCore.QObject):
         if not self.search:
             ida_kernwin.msg("[idavim] no previous search (use /)\n")
             return
-        for _ in range(count):
+        # huge counts would rescan the listing over and over (the pseudocode
+        # search wraps around), so cap the number of repeats
+        for _ in range(min(count, 32)):
             lines = self._pseudocode_lines()
             if lines is not None:
                 found = self._search_pseudocode(lines, direction)
@@ -617,7 +650,7 @@ class idavim_plugmod_t(ida_idaapi.plugmod_t):
     def init(self):
         self.event_filter = acquire_filter()
         self.register_actions()
-        logger.info("idavim loaded: NORMAL mode active (i: insert, Ctrl+[: normal, Ctrl-Shift-V: toggle)")
+        logger.info("idavim loaded: NORMAL mode active (i: insert, Shift+Esc: normal, Ctrl-Shift-V: toggle)")
 
     def register_actions(self):
         ida_kernwin.unregister_action(self.ACTION_TOGGLE)
