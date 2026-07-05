@@ -1,5 +1,7 @@
 # idavim
 
+![idavim](idavim.png)
+
 [English](README.md) | **한국어**
 
 [Vimium](https://github.com/philc/vimium)과 [IdeaVim](https://github.com/JetBrains/ideavim)에서 영감을 받은, IDA Pro용 vim 스타일 키보드 내비게이션 플러그인입니다.

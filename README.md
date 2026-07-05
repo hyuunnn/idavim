@@ -1,5 +1,7 @@
 # idavim
 
+![idavim](idavim.png)
+
 **English** | [한국어](README_ko.md)
 
 Vim-style keyboard navigation for IDA Pro, inspired by [Vimium](https://github.com/philc/vimium) and [IdeaVim](https://github.com/JetBrains/ideavim).

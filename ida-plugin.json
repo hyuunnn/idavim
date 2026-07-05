@@ -7,7 +7,7 @@
     "idaVersions": ">=9.0",
     "description": "Vim-style keyboard navigation for IDA Pro, inspired by Vimium and IdeaVim.\nNavigate the disassembly and Hex-Rays pseudocode views with hjkl, u/d half-page scrolling, gg/G, f/F character find, / search with n/N, word motions and counts. Press Shift+Esc to toggle the plugin on and off.",
     "license": "MIT",
-    "logoPath": "ida-plugin.png",
+    "logoPath": "idavim.png",
     "categories": [
       "ui-ux-and-visualization"
     ],
