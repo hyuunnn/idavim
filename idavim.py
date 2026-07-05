@@ -10,6 +10,7 @@ is enabled. Press Shift+Esc to toggle idavim off (all keys go to IDA) and
 back on.
 """
 
+import bisect
 import logging
 import re
 
@@ -43,8 +44,9 @@ VIM_WIDGET_TYPES = (
     ida_kernwin.BWN_PSEUDOCODE,
 )
 
-# maximum number of item heads walked per `/` search step in the
-# disassembly view (the pseudocode view searches all lines and wraps)
+# work budget for one `/`/n/N command in the disassembly view: total item
+# heads walked, shared across a count's repeats — the work is capped, not
+# the count (the pseudocode view searches all lines and wraps instead)
 DISASM_SEARCH_LIMIT = 50000
 
 # characters handled while idavim is enabled (without a pending prefix key).
@@ -689,89 +691,97 @@ class VimEventFilter(QtCore.QObject):
         if not self.search:
             ida_kernwin.msg("[idavim] no previous search (use /)\n")
             return
-        # the pseudocode text cannot change between repeats of one command,
-        # so build the (lowered) line list once, outside the repeat loop
-        lowered_lines = None
         if self._is_pseudocode():
-            lines = self._pseudocode_lines()
-            if not lines:
-                return  # decompilation not ready yet
-            lowered_lines = [line.lower() for line in lines]
+            self._search_pseudocode(direction, count)
+        else:
+            self._search_disasm(direction, count)
 
-        # huge counts would rescan the listing over and over (the pseudocode
-        # search wraps around), so cap the number of repeats
-        for _ in range(min(count, 32)):
-            if lowered_lines is not None:
-                found = self._search_pseudocode(lowered_lines, direction)
-            else:
-                found = self._search_disasm(direction)
-            if not found:
-                ida_kernwin.msg(f"[idavim] pattern not found: {self.search}\n")
-                return
+    def _search_pseudocode(self, direction, count):
+        """{count}n/N in the pseudocode view: collect every match position
+        once, then step into the sorted list with modular index arithmetic.
+        Any count is exact and costs one scan of the function plus a single
+        jumpto, so counts need no cap here."""
+        lines = self._pseudocode_lines()
+        if not lines:
+            return  # decompilation not ready yet
+        pattern = self.search.lower()
 
-    def _search_pseudocode(self, lowered_lines, direction):
-        """Search pre-lowered pseudocode lines around the cursor."""
+        matches = []  # (line, column) of every occurrence, in text order
+        for n, line in enumerate(lines):
+            low = line.lower()
+            col = low.find(pattern)
+            while col >= 0:
+                matches.append((n, col))
+                col = low.find(pattern, col + 1)
+        if not matches:
+            ida_kernwin.msg(f"[idavim] pattern not found: {self.search}\n")
+            return
+
         ctx = self._viewer_ctx()
         if ctx is None:
-            return False
+            return
         _text, place, x, y = ctx
         line_place = ida_kernwin.place_t_as_simpleline_place_t(place)
         if line_place is None:
-            return False
-        lineno = line_place.n
-        pattern = self.search.lower()
-        total = len(lowered_lines)
+            return
+        # the count-th match strictly beyond the caret, wrapping vim-style
+        cur = (line_place.n, x)
+        if direction > 0:
+            idx = bisect.bisect_right(matches, cur) + count - 1
+        else:
+            idx = bisect.bisect_left(matches, cur) - count
+        n, col = matches[idx % len(matches)]
+        self._jump_pseudocode_line(n, col, y)
 
-        # scan every line once, wrapping around, starting next to the cursor
-        for step in range(total + 1):
-            n = (lineno + direction * step) % total
-            line = lowered_lines[n]
-            if step == 0:
-                # within the current line, only look beyond the cursor
-                if direction > 0:
-                    pos = line.find(pattern, x + 1)
-                else:
-                    pos = line.rfind(pattern, 0, max(0, x))
-            elif direction > 0:
-                pos = line.find(pattern)
-            else:
-                pos = line.rfind(pattern)
-            if pos >= 0:
-                self._jump_pseudocode_line(n, pos, y)
-                return True
-        return False
-
-    def _search_disasm(self, direction):
+    def _search_disasm(self, direction, count):
+        """{count}n/N in the disassembly view: walk item heads up to the
+        count-th match, spending one shared DISASM_SEARCH_LIMIT budget for
+        the whole command, and jumpto only the final landing spot."""
         ctx = self._viewer_ctx()
         if ctx is None:
-            return False
+            return
         _text, place, _x, _y = ctx
         addr_place = ida_kernwin.place_t_as_idaplace_t(place)
         if addr_place is None:
-            return False
+            return
         ea = addr_place.ea
         pattern = self.search.lower()
         min_ea = ida_ida.inf_get_min_ea()
         max_ea = ida_ida.inf_get_max_ea()
 
-        for _ in range(DISASM_SEARCH_LIMIT):
+        target = None
+        found = 0
+        budget = DISASM_SEARCH_LIMIT
+        while budget > 0 and found < count:
+            budget -= 1
             if direction > 0:
                 ea = ida_bytes.next_head(ea, max_ea)
             else:
                 ea = ida_bytes.prev_head(ea, min_ea)
             if ea == ida_idaapi.BADADDR:
-                return False
+                break  # hit the edge of the listing (no wrap here)
 
             line = ida_lines.generate_disasm_line(ea, ida_lines.GENDSM_REMOVE_TAGS) or ""
             name = ida_name.get_name(ea) or ""
             if pattern in line.lower() or pattern in name.lower():
-                ida_kernwin.jumpto(ea)
-                return True
+                target = ea
+                found += 1
 
-        ida_kernwin.msg(
-            f"[idavim] search stopped after {DISASM_SEARCH_LIMIT} items\n"
-        )
-        return False
+        if target is not None:
+            ida_kernwin.jumpto(target)
+        if found >= count:
+            return
+        if budget <= 0:
+            ida_kernwin.msg(
+                f"[idavim] search stopped after {DISASM_SEARCH_LIMIT} items"
+                f" (match {found} of {count})\n"
+            )
+        elif found:
+            ida_kernwin.msg(
+                f"[idavim] only {found} of {count} matches before the end of the listing\n"
+            )
+        else:
+            ida_kernwin.msg(f"[idavim] pattern not found: {self.search}\n")
 
 
 # The event filter and the toggle action are process-wide singletons. IDA may

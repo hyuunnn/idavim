@@ -73,6 +73,14 @@ sync when keys change, and update the description in `ida-plugin.json` too.
   cannot pass a stale position) and the move is deliberately uncapped: a
   cap silently landed long-line motions short, and both endpoints lie
   within the current line, which bounds the synthetic-key burst anyway.
+- **`{n}n`/`{n}N` cap the work, not the count**: the pseudocode view
+  collects every match position once per command and picks the target with
+  modular index arithmetic (any count is exact — one scan, one jumpto); the
+  disassembly view spends a single `DISASM_SEARCH_LIMIT` item budget across
+  the whole command and jumps once to the last match reached, reporting
+  partial progress. The old `min(count, 32)` repeat cap silently truncated
+  counts and re-ran `jumpto` per repeat. Backward in-line matching is
+  match-start based (start < caret, like vim), not whole-match-left-of-caret.
 - Never intercept keys when a modal widget is active, focus is in a text
   input, or the focus window is a QDialog; only act in `BWN_DISASM` /
   `BWN_PSEUDOCODE`, and in `BWN_DISASM` only when the renderer is
