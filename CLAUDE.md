@@ -54,10 +54,13 @@ sync when keys change, and update the description in `ida-plugin.json` too.
   heads, which is deliberately rough). Disassembly jumps use
   `UIJMP_DONTPUSH` so plain movement does not pollute the Esc history.
   Horizontal movement (`h/l`) synthesizes native Left/Right key events —
-  `jumpto` per keypress caused visible lag there.
+  `jumpto` per keypress caused visible lag there. `0`/`$` jump to a
+  computed column instead of sending Home/End — IDA's own Home/End keep
+  moving the cursor on repeated presses.
 - Never intercept keys when a modal widget is active, focus is in a text
   input, or the focus window is a QDialog; only act in `BWN_DISASM` /
-  `BWN_PSEUDOCODE`.
+  `BWN_PSEUDOCODE`, and in `BWN_DISASM` only when the renderer is
+  `TCCRT_FLAT` (graph mode is left entirely to IDA).
 
 ## Environment facts
 
