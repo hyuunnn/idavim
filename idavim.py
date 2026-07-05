@@ -365,11 +365,11 @@ class VimEventFilter(QtCore.QObject):
         _viewer, _text, place, x, y = ctx
 
         if self._is_pseudocode():
-            lines = self._pseudocode_lines()
+            total = self._pseudocode_size()
             cur = ida_kernwin.place_t_as_simpleline_place_t(place)
-            if not lines or cur is None:
+            if not total or cur is None:
                 return  # decompilation not ready yet
-            target = min(max(cur.n + direction * count, 0), len(lines) - 1)
+            target = min(max(cur.n + direction * count, 0), total - 1)
             self._jump_pseudocode_line(target, x, y)
             return
 
@@ -421,9 +421,9 @@ class VimEventFilter(QtCore.QObject):
         widget = ida_kernwin.get_current_widget()
         return ida_kernwin.get_widget_type(widget) == ida_kernwin.BWN_PSEUDOCODE
 
-    def _pseudocode_lines(self):
-        """Plain-text pseudocode lines of the current vdui, or None while the
-        decompilation result is not available (view still loading)."""
+    def _pseudocode_vdui(self):
+        """The current pseudocode view's vdui with a ready cfunc, or None
+        while the decompilation result is not available (view loading)."""
         if not HAS_HEXRAYS:
             return None
         widget = ida_kernwin.get_current_widget()
@@ -431,6 +431,21 @@ class VimEventFilter(QtCore.QObject):
             return None
         vdui = ida_hexrays.get_widget_vdui(widget)
         if vdui is None or vdui.cfunc is None:
+            return None
+        return vdui
+
+    def _pseudocode_size(self):
+        """Number of pseudocode lines without copying any text — cheap
+        enough for per-keypress use (j/k/gg/G clamping)."""
+        vdui = self._pseudocode_vdui()
+        return vdui.cfunc.get_pseudocode().size() if vdui is not None else 0
+
+    def _pseudocode_lines(self):
+        """Plain-text pseudocode lines, or None while unavailable. Builds a
+        full tag-stripped copy of the function — do NOT call per keypress;
+        use _pseudocode_size() when only the line count is needed."""
+        vdui = self._pseudocode_vdui()
+        if vdui is None:
             return None
         return [ida_lines.tag_remove(sl.line) for sl in vdui.cfunc.get_pseudocode()]
 
@@ -454,7 +469,7 @@ class VimEventFilter(QtCore.QObject):
 
     def _goto_top(self):
         if self._is_pseudocode():
-            if self._pseudocode_lines():
+            if self._pseudocode_size():
                 self._jump_pseudocode_line(0)
             return  # decompilation not ready yet: do nothing
         ida_kernwin.jumpto(ida_ida.inf_get_min_ea())
@@ -467,16 +482,16 @@ class VimEventFilter(QtCore.QObject):
             if fallback is not None:
                 fallback()
             return
-        lines = self._pseudocode_lines()
-        if not lines:
+        total = self._pseudocode_size()
+        if not total:
             return  # decompilation not ready yet
-        self._jump_pseudocode_line(min(max(lineno - 1, 0), len(lines) - 1))
+        self._jump_pseudocode_line(min(max(lineno - 1, 0), total - 1))
 
     def _goto_bottom(self):
         if self._is_pseudocode():
-            lines = self._pseudocode_lines()
-            if lines:
-                self._jump_pseudocode_line(len(lines) - 1)
+            total = self._pseudocode_size()
+            if total:
+                self._jump_pseudocode_line(total - 1)
             return  # decompilation not ready yet: do nothing
         last = ida_bytes.prev_head(ida_ida.inf_get_max_ea(), ida_ida.inf_get_min_ea())
         if last != ida_idaapi.BADADDR:
@@ -623,22 +638,28 @@ class VimEventFilter(QtCore.QObject):
         if not self.search:
             ida_kernwin.msg("[idavim] no previous search (use /)\n")
             return
+        # the pseudocode text cannot change between repeats of one command,
+        # so build the (lowered) line list once, outside the repeat loop
+        lowered_lines = None
+        if self._is_pseudocode():
+            lines = self._pseudocode_lines()
+            if not lines:
+                return  # decompilation not ready yet
+            lowered_lines = [line.lower() for line in lines]
+
         # huge counts would rescan the listing over and over (the pseudocode
         # search wraps around), so cap the number of repeats
-        in_pseudocode = self._is_pseudocode()
         for _ in range(min(count, 32)):
-            if in_pseudocode:
-                lines = self._pseudocode_lines()
-                if not lines:
-                    return  # decompilation not ready yet
-                found = self._search_pseudocode(lines, direction)
+            if lowered_lines is not None:
+                found = self._search_pseudocode(lowered_lines, direction)
             else:
                 found = self._search_disasm(direction)
             if not found:
                 ida_kernwin.msg(f"[idavim] pattern not found: {self.search}\n")
                 return
 
-    def _search_pseudocode(self, lines, direction):
+    def _search_pseudocode(self, lowered_lines, direction):
+        """Search pre-lowered pseudocode lines around the cursor."""
         ctx = self._viewer_ctx()
         if ctx is None:
             return False
@@ -648,12 +669,12 @@ class VimEventFilter(QtCore.QObject):
             return False
         lineno = line_place.n
         pattern = self.search.lower()
-        total = len(lines)
+        total = len(lowered_lines)
 
         # scan every line once, wrapping around, starting next to the cursor
         for step in range(total + 1):
             n = (lineno + direction * step) % total
-            line = lines[n].lower()
+            line = lowered_lines[n]
             if step == 0:
                 # within the current line, only look beyond the cursor
                 if direction > 0:
