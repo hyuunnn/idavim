@@ -27,6 +27,8 @@ State changes are printed to the Output window (`[idavim] enabled` / `[idavim] d
 
 Keys are intercepted with an application-level Qt event filter, so nothing is stolen from dialogs, the CLI input, or any other text field — only the listing views are affected. Graph-mode disassembly is also left entirely to IDA (line-oriented motions make no sense there).
 
+With "Synchronize with" enabled, views linked to the pseudocode follow idavim motions just like they follow the arrow keys. (IDA's sync only reacts to real key input, so after each jump idavim taps a quick Down+Up — net movement zero — and lets IDA do the following.)
+
 ## Keys (while enabled)
 
 ### Movement
