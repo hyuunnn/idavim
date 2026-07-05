@@ -122,14 +122,16 @@ class VimEventFilter(QtCore.QObject):
             return False
 
         try:
-            in_context = self._in_vim_context()
-            wanted = in_context and self._wants(event)
+            # cheap checks first: _wants only reads the enabled flag and the
+            # Qt event, so the IDA API probe in _in_vim_context runs only
+            # for keys idavim might actually claim
+            wanted = self._wants(event) and self._in_vim_context()
 
             if logger.isEnabledFor(logging.DEBUG) and etype == QEvent.Type.KeyPress:
                 logger.debug(
-                    "key=0x%x text=%r enabled=%s pending=%r in_context=%s wanted=%s",
+                    "key=0x%x text=%r enabled=%s pending=%r wanted=%s",
                     event.key(), event.text(), self.enabled, self.pending,
-                    in_context, wanted,
+                    wanted,
                 )
 
             if not wanted:

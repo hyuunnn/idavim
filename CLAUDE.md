@@ -28,7 +28,11 @@ sync when keys change, and update the description in `ida-plugin.json` too.
 - **Key interception**: application-level Qt event filter. Accepting the
   `ShortcutOverride` event suppresses IDA's own shortcut for that key and the
   key is redelivered as a `KeyPress`, which we consume. Both event types must
-  pass the same `_wants()` predicate.
+  pass the same `_wants()` predicate. Order matters for performance: the
+  filter evaluates `_wants(event) and _in_vim_context()` — `_wants` reads
+  only the enabled flag and Qt event state, so the IDA API probe
+  (`_in_vim_context`) runs only for keys idavim might claim, and a disabled
+  idavim costs nothing per keystroke.
 - **Enable/disable, not vim modes**: a single boolean, deliberately not
   NORMAL/INSERT (two layers of state confused users). The toggle is a
   registered IDA action (`idavim:toggle`, hotkey `Shift-Esc`, remappable in
