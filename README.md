@@ -8,22 +8,22 @@ Works in both the **disassembly view** and the **Hex-Rays pseudocode view**.
 
 ## How it works
 
-idavim is modal, like vim:
+idavim is a simple on/off switch:
 
-- **NORMAL mode** (default): the keys below are intercepted for navigation, taking priority over IDA's single-key shortcuts (`n` rename, `d` data, `u` undefine, `g` jump, ...).
-- **INSERT mode**: everything is passed through to IDA, so all native IDA shortcuts work as usual.
+- **Enabled** (default): the keys below are intercepted for navigation, taking priority over IDA's single-key shortcuts (`n` rename, `d` data, `u` undefine, `g` jump, ...).
+- **Disabled**: every key goes to IDA, so all native IDA shortcuts work as usual.
 
 | Action | Key |
 |---|---|
-| Enter INSERT (passthrough) mode | `i` |
-| Back to NORMAL mode | `Shift+Esc` (plain `Esc` stays with IDA's "navigate back") |
-| Enable/disable idavim entirely | `Ctrl+Shift+V` (macOS: `⌘⇧V`, or Edit → Plugins → idavim) |
+| Disable idavim (use IDA keys) | `i` |
+| Re-enable idavim | `Shift+Esc` (plain `Esc` stays with IDA's "navigate back") |
+| Toggle | `Ctrl+Shift+V` (macOS: `⌘⇧V`, or Edit → Plugins → idavim) |
 
-Mode changes are printed to the Output window (`[idavim] -- NORMAL --` / `-- INSERT --`), so check there when unsure which mode you are in.
+State changes are printed to the Output window (`[idavim] enabled` / `[idavim] disabled`), so check there when unsure.
 
 Keys are intercepted with an application-level Qt event filter, so nothing is stolen from dialogs, the CLI input, or any other text field — only the listing views are affected. Graph-mode disassembly is also left entirely to IDA (line-oriented motions make no sense there).
 
-## Keys (NORMAL mode)
+## Keys (while enabled)
 
 ### Movement
 
@@ -48,7 +48,7 @@ Keys are intercepted with an application-level Qt event filter, so nothing is st
 In the pseudocode view, `/` searches all lines of the current function and wraps around.
 In the disassembly view it walks item heads (disassembly text and names) from the cursor.
 
-Everything else (`Esc`, `Enter`, `x`, `Space`, arrows, ...) is passed through to IDA even in NORMAL mode.
+Everything else (`Esc`, `Enter`, `x`, `Space`, arrows, ...) is passed through to IDA even while idavim is enabled.
 
 ## Requirements
 

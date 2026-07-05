@@ -29,14 +29,16 @@ sync when keys change, and update the description in `ida-plugin.json` too.
   `ShortcutOverride` event suppresses IDA's own shortcut for that key and the
   key is redelivered as a `KeyPress`, which we consume. Both event types must
   pass the same `_wants()` predicate.
-- **Modal**: NORMAL intercepts the vim keys; INSERT (`i`) passes everything
-  through so IDA's native single-key shortcuts (n/d/u/g/...) work.
-  `Shift+Esc` is the only return chord — `Ctrl+[` was removed because macOS
-  turns it into ESC (conflicts with IDA's Esc = navigate back) and `Cmd+[`
-  is IDA's own back-navigation.
+- **Enable/disable, not vim modes**: a single boolean, deliberately not
+  NORMAL/INSERT (two layers of state confused users). Enabled intercepts the
+  vim keys; `i` disables so IDA's native single-key shortcuts (n/d/u/g/...)
+  work; `Shift+Esc` re-enables; the toggle action flips the same flag.
+  `Ctrl+[` was removed because macOS turns it into ESC (conflicts with
+  IDA's Esc = navigate back) and `Cmd+[` is IDA's own back-navigation.
 - **Singleton filter**: the filter is a refcounted module-level singleton.
   IDA can create a new plugmod per database without tearing down the old one
-  first; two live filters desync their modes and steal keys in INSERT.
+  first; two live filters desync their enabled state and a stale one keeps
+  stealing keys after the active one was disabled.
 - **Qt6 quirks**: key events may be delivered to the top-level `QWindow`
   (no `fontMetrics`), so the handler resolves `QApplication.focusWidget()`
   itself. On macOS Qt maps physical Ctrl to `MetaModifier` and Cmd to

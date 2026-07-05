@@ -5,9 +5,9 @@ gg/G, counts, word motions) in the disassembly and Hex-Rays pseudocode views,
 similar to Vimium / IdeaVim.
 
 Keys are intercepted with an application-level Qt event filter so they take
-priority over IDA's own single-key shortcuts (n, d, u, g, ...) while NORMAL
-mode is active. Press `i` to enter INSERT (passthrough) mode and use IDA's
-native keys; press Shift+Esc to return to NORMAL mode.
+priority over IDA's own single-key shortcuts (n, d, u, g, ...) while idavim
+is enabled. Press `i` to disable idavim and use IDA's native keys; press
+Shift+Esc to re-enable it.
 """
 
 import logging
@@ -37,9 +37,6 @@ logger = logging.getLogger("idavim")
 Qt = QtCore.Qt
 QEvent = QtCore.QEvent
 
-MODE_NORMAL = "NORMAL"
-MODE_INSERT = "INSERT"
-
 # widget types where vim navigation is active
 VIM_WIDGET_TYPES = (
     ida_kernwin.BWN_DISASM,
@@ -50,8 +47,8 @@ VIM_WIDGET_TYPES = (
 # disassembly view (the pseudocode view searches all lines and wraps)
 DISASM_SEARCH_LIMIT = 50000
 
-# characters handled in NORMAL mode (without a pending prefix key)
-NORMAL_KEYS = set("hjklGgudfFwbe0$^;,/nNi123456789")
+# characters handled while idavim is enabled (without a pending prefix key)
+VIM_KEYS = set("hjklGgudfFwbe0$^;,/nNi123456789")
 
 WORD_RE = re.compile(r"\w+|[^\w\s]+")
 
@@ -69,7 +66,6 @@ class VimEventFilter(QtCore.QObject):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.enabled = True
-        self.mode = MODE_NORMAL
         self.pending = ""  # "f", "F" (find char) or "g" (gg)
         self.count = ""  # accumulated count prefix, e.g. "12" for 12j
         self.last_find = None  # (cmd, char) for ; and ,
@@ -81,16 +77,15 @@ class VimEventFilter(QtCore.QObject):
     # ------------------------------------------------------------------ #
 
     def toggle(self):
-        self.enabled = not self.enabled
-        self._reset_pending()
-        self.mode = MODE_NORMAL
-        state = "enabled -- NORMAL --" if self.enabled else "disabled"
-        ida_kernwin.msg(f"[idavim] {state}\n")
+        self._set_enabled(not self.enabled)
 
-    def _set_mode(self, mode):
-        self.mode = mode
+    def _set_enabled(self, enabled):
+        self.enabled = enabled
         self._reset_pending()
-        ida_kernwin.msg(f"[idavim] -- {mode} --\n")
+        if enabled:
+            ida_kernwin.msg("[idavim] enabled\n")
+        else:
+            ida_kernwin.msg("[idavim] disabled - IDA keys active (Shift+Esc to re-enable)\n")
 
     def _reset_pending(self):
         self.pending = ""
@@ -109,7 +104,7 @@ class VimEventFilter(QtCore.QObject):
     # ------------------------------------------------------------------ #
 
     def eventFilter(self, obj, event):
-        if self._synthesizing or not self.enabled:
+        if self._synthesizing:
             return False
 
         etype = event.type()
@@ -122,8 +117,8 @@ class VimEventFilter(QtCore.QObject):
 
             if logger.isEnabledFor(logging.DEBUG) and etype == QEvent.Type.KeyPress:
                 logger.debug(
-                    "key=0x%x text=%r mode=%s pending=%r in_context=%s wanted=%s",
-                    event.key(), event.text(), self.mode, self.pending,
+                    "key=0x%x text=%r enabled=%s pending=%r in_context=%s wanted=%s",
+                    event.key(), event.text(), self.enabled, self.pending,
                     in_context, wanted,
                 )
 
@@ -189,9 +184,9 @@ class VimEventFilter(QtCore.QObject):
         alt = bool(mods & Qt.KeyboardModifier.AltModifier)
         meta = bool(mods & Qt.KeyboardModifier.MetaModifier)
 
-        if self.mode == MODE_INSERT:
-            # only the "back to NORMAL" chord is intercepted; a plain Esc
-            # stays with IDA (navigate back) and Shift+Esc is unused by IDA
+        if not self.enabled:
+            # only the "re-enable" chord is intercepted; a plain Esc stays
+            # with IDA (navigate back) and Shift+Esc is unused by IDA
             if event.key() == Qt.Key.Key_Escape and bool(
                 mods & Qt.KeyboardModifier.ShiftModifier
             ):
@@ -212,7 +207,7 @@ class VimEventFilter(QtCore.QObject):
         if text in ";," and self.last_find is None:
             return False  # keep IDA's `;` (comment) until f/F has been used
 
-        return text in NORMAL_KEYS
+        return text in VIM_KEYS
 
     # ------------------------------------------------------------------ #
     # key dispatch
@@ -225,8 +220,8 @@ class VimEventFilter(QtCore.QObject):
         if widget is None:
             return False
 
-        if self.mode == MODE_INSERT:
-            self._set_mode(MODE_NORMAL)
+        if not self.enabled:
+            self._set_enabled(True)
             return True
 
         char = event.text()
@@ -288,7 +283,7 @@ class VimEventFilter(QtCore.QObject):
         elif char == "N":
             self._search_step(-1, count)
         elif char == "i":
-            self._set_mode(MODE_INSERT)
+            self._set_enabled(False)
         else:
             return False
 
@@ -678,7 +673,7 @@ class idavim_plugmod_t(ida_idaapi.plugmod_t):
     def init(self):
         self.event_filter = acquire_filter()
         self.register_actions()
-        logger.info("idavim loaded: NORMAL mode active (i: insert, Shift+Esc: normal, Ctrl-Shift-V: toggle)")
+        logger.info("idavim loaded and enabled (i: hand keys to IDA, Shift+Esc: re-enable, Ctrl-Shift-V: toggle)")
 
     def register_actions(self):
         ida_kernwin.unregister_action(self.ACTION_TOGGLE)
@@ -713,7 +708,7 @@ class idavim_plugmod_t(ida_idaapi.plugmod_t):
 class idavim_plugin_t(ida_idaapi.plugin_t):
     flags = ida_idaapi.PLUGIN_MULTI
     comment = "vim-style navigation for disassembly and pseudocode views"
-    help = "hjkl/u/d/gg/G/f/n vim navigation; i for insert mode, Ctrl-Shift-V to toggle"
+    help = "hjkl/u/d/gg/G/f/n vim navigation; i to hand keys to IDA, Shift+Esc or Ctrl-Shift-V to re-enable"
     wanted_name = "idavim"
     wanted_hotkey = ""
 
