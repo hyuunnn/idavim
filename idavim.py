@@ -254,10 +254,11 @@ class VimEventFilter(QtCore.QObject):
         meta = bool(mods & Qt.KeyboardModifier.MetaModifier)
 
         if ctrl or alt or meta:
-            # a chord cannot complete a pending command; abandon it so the
-            # stale prefix doesn't consume a later plain key (bare modifier
-            # presses excepted, same as the text-less branch below)
-            if self.pending and event.key() not in MODIFIER_KEYS:
+            # a chord cannot complete a pending command or extend a count;
+            # abandon the half-typed state so a stale prefix or count
+            # doesn't hijack a later plain key (bare modifier presses
+            # excepted, same as the text-less branch below)
+            if event.key() not in MODIFIER_KEYS:
                 self._reset_pending()
             return False
 

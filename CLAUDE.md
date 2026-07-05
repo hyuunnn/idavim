@@ -80,9 +80,9 @@ and the `ida-plugin.json` description in sync when keys change.
   `BWN_PSEUDOCODE`, and in `BWN_DISASM` only with a `TCCRT_FLAT` renderer
   (graph mode is left entirely to IDA).
 - Half-typed state (pending f/F/g/c target, count prefix) is abandoned on
-  any focus change AND on any text-less key (bare modifiers excepted —
-  Shift is held while typing an uppercase f-target). Completed-command
-  state (last_find, the `/` pattern) survives.
+  any focus change, any text-less key, AND any modifier chord (bare
+  modifiers excepted — Shift is held while typing an uppercase f-target).
+  Completed-command state (last_find, the `/` pattern) survives.
 
 ### Known limitations — reviewed, deliberately NOT fixed
 
@@ -90,8 +90,10 @@ and the `ida-plugin.json` description in sync when keys change.
   navigation aid, not a vim emulator; `f` + `;;` covers it. `{n}gg`/`{n}G`
   ARE supported in pseudocode; the disassembly listing has no line numbers,
   so counts fall back to plain gg/G there.
-- A bare count is not cancelled by Esc (Esc = IDA's navigate back); it is
-  cleared by any motion, text-less key, focus change, or toggle.
+- A bare count is not cancelled by Esc (Esc = IDA's navigate back), nor by
+  other unclaimed keys that carry Qt text (Enter, Tab, Backspace — same
+  mechanism: non-empty `text()` skips the text-less reset); it is cleared
+  by any motion, text-less key, modifier chord, focus change, or toggle.
 - acquire_filter is not atomic and the j/k hot path re-resolves the
   widget/viewer 2-3x per press — no realistic trigger / microsecond cost.
 - w/e/b wrapping at the listing's first/last line lands on the wrong word
