@@ -83,6 +83,9 @@ and the `ida-plugin.json` description in sync when keys change.
   any focus change, any text-less key, AND any modifier chord (bare
   modifiers excepted — Shift is held while typing an uppercase f-target).
   Completed-command state (last_find, the `/` pattern) survives.
+- Never intercept while a Qt popup (context menu) is open: popups are
+  neither modal nor focus-taking, so only `activePopupWidget()` detects
+  them — without that check menu type-ahead keys would run vim motions.
 
 ### Known limitations — reviewed, deliberately NOT fixed
 

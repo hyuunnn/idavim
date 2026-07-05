@@ -192,6 +192,13 @@ class VimEventFilter(QtCore.QObject):
         if app.activeModalWidget() is not None:
             return False
 
+        # popups (context menus) are neither modal nor focus-taking: keys
+        # are delivered to them via the popup grab while focusWidget still
+        # reports the viewer, so without this check idavim would consume
+        # the menu's type-ahead/accelerator keys
+        if app.activePopupWidget() is not None:
+            return False
+
         focus = app.focusWidget()
         if focus is None:
             return False
