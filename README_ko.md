@@ -1,6 +1,8 @@
 # idavim
 
-![idavim](ida-plugin.png)
+<p align="center">
+  <img src="ida-plugin.png" alt="idavim" width="480">
+</p>
 
 [English](README.md) | **한국어**
 
