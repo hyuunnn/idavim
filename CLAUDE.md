@@ -67,6 +67,13 @@ sync when keys change, and update the description in `ida-plugin.json` too.
   on any focus change (`QApplication.focusChanged`), so a stale prefix never
   hijacks a key pressed after the user worked elsewhere. Completed-command
   state (last_find for `;`/`,`, the `/` search pattern) survives.
+- **Known limitation, deliberately NOT fixed**: w/e/b wrapping at the first/
+  last line of the listing moves the cursor to the wrong word instead of
+  staying put like vim. A fix based on `place.clone()` + `place.compare()`
+  to detect "the line did not change" broke w/b outright in live IDA and was
+  rolled back; the real-world impact (last pseudocode line is just `}`) does
+  not justify the risk. If ever retried, compare explicit line identity per
+  view (simpleline `.n` / idaplace `.ea`), not `place_t.compare()`.
 
 ## Environment facts
 
