@@ -51,7 +51,9 @@ and the `ida-plugin.json` description in sync when keys change.
   horizontal motions synthesize native Left/Right key events: `jumpto`'s
   cost varies with the token under the landing column (identical motions
   felt fast or slow), and IDA's own Home/End keep moving on repeated
-  presses, so `0`/`$` compute the column and arrow-key to it.
+  presses, so `0`/`$` compute the column and arrow-key to it. `h`/`l`
+  clamp `caret ± count` to the line and jump the same way (replacing an
+  old `min(count, 128)` cap that truncated silently).
   `_jump_to_column` reads the caret itself right before moving and is
   deliberately uncapped — a cap silently landed long-line motions short,
   and both endpoints lie in the current line, bounding the burst. Motions

@@ -324,13 +324,13 @@ class VimEventFilter(QtCore.QObject):
         count = self._take_count()
 
         if char == "h":
-            self._send_key(widget, Qt.Key.Key_Left, min(count, 128))
+            self._move_in_line(-count)
         elif char == "j":
             self._move_lines(count, 1)
         elif char == "k":
             self._move_lines(count, -1)
         elif char == "l":
-            self._send_key(widget, Qt.Key.Key_Right, min(count, 128))
+            self._move_in_line(count)
         elif char == "d":
             self._move_lines(count * self._half_page(widget), 1)
         elif char == "u":
@@ -570,8 +570,19 @@ class VimEventFilter(QtCore.QObject):
             ida_kernwin.jumpto(last)
 
     # ------------------------------------------------------------------ #
-    # in-line motions: f F ; , ^ w b
+    # in-line motions: h l f F ; , 0 ^ $ w e b
     # ------------------------------------------------------------------ #
+
+    def _move_in_line(self, dx):
+        """h/l: move the caret dx columns, clamped to the current line —
+        the same compute-a-column-and-jump shape as every other in-line
+        motion, so no count cap is needed (the burst is line-bounded)."""
+        ctx = self._viewer_ctx()
+        if ctx is None:
+            return
+        text, _place, x, _y = ctx
+        end = max(0, len(text.rstrip()) - 1)
+        self._jump_to_column(min(max(x + dx, 0), end))
 
     def _find_in_line(self, cmd, char, count):
         ctx = self._viewer_ctx()
