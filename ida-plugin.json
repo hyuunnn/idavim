@@ -5,7 +5,7 @@
     "entryPoint": "idavim_entry.py",
     "version": "0.1.0",
     "idaVersions": ">=9.0",
-    "description": "Vim-style keyboard navigation for IDA Pro, inspired by Vimium and IdeaVim.\nNavigate the disassembly and Hex-Rays pseudocode views with hjkl, u/d half-page scrolling, gg/G, line jumps ({n}G and :30 in the pseudocode view), f/F character find, / search with n/N, word motions and counts, plus cw to rename the identifier under the cursor. Press Shift+Esc to toggle the plugin on and off.",
+    "description": "Vim-style keyboard navigation for IDA Pro, inspired by Vimium and IdeaVim.\nNavigate the disassembly and Hex-Rays pseudocode views with hjkl, word motions, gg/G, f/F, / search, and counts, plus cw rename (pseudocode view only). Shift+Esc toggles the plugin.",
     "license": "MIT",
     "logoPath": "ida-plugin.png",
     "categories": [
