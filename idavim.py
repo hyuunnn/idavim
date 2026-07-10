@@ -58,17 +58,20 @@ MOTION_LIMIT = 10000
 
 # characters handled while idavim is enabled (without a pending prefix key).
 # `i` is deliberately absent: it is IDA's "insert comment line" in the
-# disassembly view
-VIM_KEYS = set("hjklGgudfFwbe0$^;,/nN123456789")
+# disassembly view. `c` shadows IDA's MakeCode while enabled — the same
+# trade as n/d/u/g (toggle idavim off to use them).
+VIM_KEYS = set("hjklGgcudfFwbe0$^;,/nN123456789")
 
 # keys intercepted only in the pseudocode view: in the disassembly view ':'
-# is IDA's "enter comment" and 'c' is "make code". The gate lives in
-# _in_vim_context (where the widget type is already resolved, keeping
-# _wants free of IDA API calls) — see it for the pending-prefix exception.
-PSEUDOCODE_ONLY_KEYS = set(":c")
+# is IDA's "enter comment" (and there are no line numbers to jump to). The
+# gate lives in _in_vim_context (where the widget type is already resolved,
+# keeping _wants free of IDA API calls) — see it for the pending-prefix
+# exception.
+PSEUDOCODE_ONLY_KEYS = set(":")
 
-# Hex-Rays action invoked by cw (rename the item under the cursor)
+# per-view rename action invoked by cw (rename the item under the cursor)
 HX_RENAME_ACTION = "hx:Rename"
+DISASM_RENAME_ACTION = "MakeName"
 
 # bare modifier presses must not cancel a pending command (Shift is held
 # while typing an uppercase or symbol target for f/F)
@@ -241,8 +244,8 @@ class VimEventFilter(QtCore.QObject):
 
         # pseudocode-only keys stay with IDA everywhere else — but never
         # while a prefix is pending: the key is then an f/F target (or a
-        # cancel) and must be consumed, not leaked to IDA ("fc" in the
-        # disassembly view must find 'c', not run MakeCode)
+        # cancel) and must be consumed, not leaked to IDA ("f:" in the
+        # disassembly view must find ':', not open the comment prompt)
         if (
             not self.pending
             and event.text() in PSEUDOCODE_ONLY_KEYS
@@ -723,7 +726,10 @@ class VimEventFilter(QtCore.QObject):
     # ------------------------------------------------------------------ #
 
     def _rename_under_cursor(self):
-        if not ida_kernwin.process_ui_action(HX_RENAME_ACTION):
+        action = (
+            HX_RENAME_ACTION if self._is_pseudocode() else DISASM_RENAME_ACTION
+        )
+        if not ida_kernwin.process_ui_action(action):
             ida_kernwin.msg("[idavim] nothing to rename here\n")
 
     def _prompt_goto_line(self):

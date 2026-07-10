@@ -14,7 +14,7 @@ Works in both the **disassembly view** and the **Hex-Rays pseudocode view**.
 
 idavim is a simple on/off switch:
 
-- **Enabled** (default): the keys below are intercepted for navigation, taking priority over IDA's single-key shortcuts (`n` rename, `d` data, `u` undefine, `g` jump, ...).
+- **Enabled** (default): the keys below are intercepted for navigation, taking priority over IDA's single-key shortcuts (`n` rename, `d` data, `u` undefine, `g` jump, `c` code, ...).
 - **Disabled**: every key goes to IDA, so all native IDA shortcuts work as usual.
 
 | Action | Key |
@@ -60,7 +60,7 @@ In the disassembly view it walks item heads (disassembly text and names) from th
 
 | Key | Action |
 |---|---|
-| `cw` | rename the identifier under the cursor (opens IDA's rename dialog) — pseudocode view only; in the disassembly view `c` stays IDA's "make code" |
+| `cw` | rename the identifier under the cursor (opens IDA's rename dialog) |
 
 Everything else (`Esc`, `Enter`, `x`, `Space`, arrows, ...) is passed through to IDA even while idavim is enabled. The only exception is the single key typed right after `f`/`F`/`g`/`c`: a printable key completes that command, and a plain `Esc` cancels it (vim-style) without triggering IDA's "navigate back".
 

@@ -77,17 +77,22 @@ and the `ida-plugin.json` description in sync when keys change.
   budget per command, jumps to the last match reached, reports partial
   progress. (The old `min(count, 32)` cap silently truncated counts.)
   Backward in-line matching is match-start based (start < caret, like vim).
-- **Pseudocode-only keys** (`:` line prompt, `cw` rename via
-  `process_ui_action("hx:Rename")`): in the disassembly view `:` is IDA's
-  "enter comment" and `c` is MakeCode, so both stay with IDA there. The
+- **`cw` renames in BOTH views**, dispatching per view
+  (`process_ui_action`: `hx:Rename` / `MakeName`). `c` therefore shadows
+  IDA's MakeCode while enabled — the same trade as n/d/u/g, toggle off to
+  use them. (Originally `c` stayed with IDA in the disassembly view; that
+  exception was dropped as inconsistent with the toggle model.)
+- **Pseudocode-only key** `:` (line prompt): in the disassembly view `:`
+  is IDA's "enter comment" and there are no line numbers to jump to. The
   gate (PSEUDOCODE_ONLY_KEYS) lives in `_in_vim_context`, NOT `_wants`
   (ordering invariant above), and is SKIPPED while a prefix is pending: a
-  pending f/F target must always be consumed — `fc` leaking to IDA ran
-  MakeCode, a destructive DB edit. Don't simplify the `not self.pending`
-  condition away. For the same reason eventFilter's except fails CLOSED
-  while a prefix is pending (swallow one key, reset) — an exception in the
-  probe would otherwise leave the override unaccepted and fire IDA's
-  shortcut. `:` uses ask_long (ask_str + HIST_IDENT rejects digits).
+  pending f/F target must always be consumed, never leaked to IDA (this
+  gate once covered `c`, where an `fc` leak ran MakeCode — a destructive
+  DB edit). Don't simplify the `not self.pending` condition away. For the
+  same reason eventFilter's except fails CLOSED while a prefix is pending
+  (swallow one key, reset) — an exception in the probe would otherwise
+  leave the override unaccepted and fire IDA's shortcut for the target
+  key. `:` uses ask_long (ask_str + HIST_IDENT rejects digits).
 - Never intercept when a modal widget is active, focus is in a text input,
   or the focus window is a QDialog; act only in `BWN_DISASM` /
   `BWN_PSEUDOCODE`, and in `BWN_DISASM` only with a `TCCRT_FLAT` renderer
