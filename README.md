@@ -71,7 +71,7 @@ idavim is a navigation aid, not a vim emulator — only single commands (optiona
 - **Supported**: `count + motion` (`12j`, `3w`, `2d`), `count + gg/G` (`30G`, pseudocode only), `f{char}` then `;`/`,`
 - **Not supported**: `count + f/F` (`3fx` finds the 1st match — use `f` + `;;`), operators and text objects (`dw`, `yy`, `ci(`, ...), marks, registers, macros
 
-An interrupted two-key sequence behaves like vim: an invalid follow-up key cancels the command (`30g` then `3` throws away both), and switching focus to another widget abandons any half-typed command.
+An interrupted two-key sequence behaves like vim: an invalid follow-up key cancels the command (`30g` then `3` throws away both), and switching focus to another widget or clicking the mouse abandons any half-typed command.
 
 ## Requirements
 

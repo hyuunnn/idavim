@@ -155,6 +155,13 @@ class VimEventFilter(QtCore.QObject):
             return False
 
         etype = event.type()
+        if etype == QEvent.Type.MouseButtonPress:
+            # a click moves the caret or opens a context menu; popups take
+            # no focus, so without this the half-typed state would survive
+            # the menu and hijack a key pressed much later
+            if self.pending or self.count:
+                self._reset_pending()
+            return False
         if etype not in (QEvent.Type.ShortcutOverride, QEvent.Type.KeyPress):
             return False
 

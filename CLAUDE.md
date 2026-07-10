@@ -90,9 +90,14 @@ and the `ida-plugin.json` description in sync when keys change.
   `BWN_PSEUDOCODE`, and in `BWN_DISASM` only with a `TCCRT_FLAT` renderer
   (graph mode is left entirely to IDA).
 - Half-typed state (pending f/F/g/c target, count prefix) is abandoned on
-  any focus change, any text-less key, AND any modifier chord (bare
-  modifiers excepted — Shift is held while typing an uppercase f-target).
-  Completed-command state (last_find, the `/` pattern) survives.
+  any focus change, any text-less key, any modifier chord (bare modifiers
+  excepted — Shift is held while typing an uppercase f-target), AND any
+  mouse press. The mouse-press reset lives in eventFilter, not `_wants`:
+  a click can open a context menu (popups take no focus, so no
+  focusChanged fires) or just move the caret, and neither produces a key
+  event — without it a pending prefix survived the popup and hijacked a
+  key pressed much later. Completed-command state (last_find, the `/`
+  pattern) survives.
 - Never intercept while a Qt popup (context menu) is open: popups are
   neither modal nor focus-taking, so only `activePopupWidget()` detects
   them — without that check menu type-ahead keys would run vim motions.
