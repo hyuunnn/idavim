@@ -655,8 +655,8 @@ class VimEventFilter(QtCore.QObject):
         self._jump_to_column(pos)
 
     def _repeat_find(self, char, count):
-        if self.last_find is None:
-            return
+        # last_find is never None here: _wants leaves ;/, with IDA until
+        # f/F has set it, and nothing resets it back to None
         cmd, target = self.last_find
         if char == ",":
             cmd = "F" if cmd == "f" else "f"
