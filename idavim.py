@@ -400,7 +400,7 @@ class VimEventFilter(QtCore.QObject):
         return True
 
     # ------------------------------------------------------------------ #
-    # synthetic key motions
+    # key synthesis and vertical motions: j k d u
     # ------------------------------------------------------------------ #
 
     def _send_key(self, widget, key, times=1):
@@ -722,7 +722,7 @@ class VimEventFilter(QtCore.QObject):
         self._word_motion(widget, count, lambda m: m.start(), forward=False)
 
     # ------------------------------------------------------------------ #
-    # search: / n N
+    # deferred prompts and actions: cw :
     # ------------------------------------------------------------------ #
 
     def _rename_under_cursor(self):
@@ -736,6 +736,10 @@ class VimEventFilter(QtCore.QObject):
         value = ida_kernwin.ask_long(1, "idavim: go to line")
         if value is not None and value > 0:
             self._goto_line(value)
+
+    # ------------------------------------------------------------------ #
+    # search: / n N
+    # ------------------------------------------------------------------ #
 
     def _prompt_search(self):
         pattern = ida_kernwin.ask_str(self.search, ida_kernwin.HIST_SRCH, "idavim search")
