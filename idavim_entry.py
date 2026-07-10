@@ -40,10 +40,7 @@ if should_load():
         return idavim_plugin_t()
 
 else:
-    try:
-        import ida_idaapi
-    except ImportError:
-        import idaapi as ida_idaapi
+    import ida_idaapi
 
     class idavim_nop_plugin_t(ida_idaapi.plugin_t):
         flags = ida_idaapi.PLUGIN_HIDE | ida_idaapi.PLUGIN_UNL

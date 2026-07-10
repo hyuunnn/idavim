@@ -400,9 +400,8 @@ class VimEventFilter(QtCore.QObject):
     # synthetic key motions
     # ------------------------------------------------------------------ #
 
-    def _send_key(self, widget, key, times=1, mods=None):
-        if mods is None:
-            mods = Qt.KeyboardModifier.NoModifier
+    def _send_key(self, widget, key, times=1):
+        mods = Qt.KeyboardModifier.NoModifier
         self._synthesizing = True
         try:
             for _ in range(times):
@@ -421,10 +420,10 @@ class VimEventFilter(QtCore.QObject):
         renders as several display lines counts as one, which is fine for
         rough vim-style movement).
         """
-        ctx = self._viewer_ctx()
-        if ctx is None:
+        result = self._viewer_place()
+        if result is None:
             return
-        _text, place, x, y = ctx
+        place, x, y = result
 
         if self._is_pseudocode():
             total = self._pseudocode_size()
@@ -464,6 +463,15 @@ class VimEventFilter(QtCore.QObject):
     # ------------------------------------------------------------------ #
     # place helpers
     # ------------------------------------------------------------------ #
+
+    def _viewer_place(self):
+        """Returns (place, x, y) or None — _viewer_ctx without the line
+        text, for callers that don't need it (the j/k hot path and the
+        search entry points skip the curline fetch and tag strip)."""
+        viewer = ida_kernwin.get_current_viewer()
+        if viewer is None:
+            return None
+        return ida_kernwin.get_custom_viewer_place(viewer, False) or None
 
     def _viewer_ctx(self):
         """Returns (plain line text, place, x, y) or None."""
@@ -669,74 +677,46 @@ class VimEventFilter(QtCore.QObject):
         stripped = text.lstrip()
         self._jump_to_column(len(text) - len(stripped) if stripped else 0)
 
-    def _word_forward(self, widget, count):
+    def _word_motion(self, widget, count, pos, forward):
+        """Shared w/e/b loop: step to the next/previous word position on
+        the current line, wrapping one line (Down+Home / Up+End) and
+        rescanning when the line runs out. `pos` extracts the column of a
+        WORD_RE match (start for w/b, end-1 for e)."""
         ctx = self._viewer_ctx()
         if ctx is None:
             return
         text, _place, x, _y = ctx
 
         for _ in range(count):
-            starts = [m.start() for m in WORD_RE.finditer(text) if m.start() > x]
-            if starts:
-                x = starts[0]
-            else:
-                # wrap to the first word of the next line
-                self._send_key(widget, Qt.Key.Key_Down)
-                self._send_key(widget, Qt.Key.Key_Home)
+            cands = [p for p in (pos(m) for m in WORD_RE.finditer(text))
+                     if (p > x if forward else p < x)]
+            if not cands:
+                # wrap to the first word of the next line / the last word
+                # of the previous line
+                if forward:
+                    self._send_key(widget, Qt.Key.Key_Down)
+                    self._send_key(widget, Qt.Key.Key_Home)
+                else:
+                    self._send_key(widget, Qt.Key.Key_Up)
+                    self._send_key(widget, Qt.Key.Key_End)
                 ctx = self._viewer_ctx()
                 if ctx is None:
                     return
                 text, _place, x, _y = ctx
-                starts = [m.start() for m in WORD_RE.finditer(text)]
-                if starts:
-                    x = starts[0]
+                cands = [pos(m) for m in WORD_RE.finditer(text)]
+                if not cands:
+                    continue  # blank line: keep the fresh caret column
+            x = cands[0] if forward else cands[-1]
         self._jump_to_column(x)
+
+    def _word_forward(self, widget, count):
+        self._word_motion(widget, count, lambda m: m.start(), forward=True)
 
     def _word_end(self, widget, count):
-        ctx = self._viewer_ctx()
-        if ctx is None:
-            return
-        text, _place, x, _y = ctx
-
-        for _ in range(count):
-            ends = [m.end() - 1 for m in WORD_RE.finditer(text) if m.end() - 1 > x]
-            if ends:
-                x = ends[0]
-            else:
-                # wrap to the end of the first word of the next line
-                self._send_key(widget, Qt.Key.Key_Down)
-                self._send_key(widget, Qt.Key.Key_Home)
-                ctx = self._viewer_ctx()
-                if ctx is None:
-                    return
-                text, _place, x, _y = ctx
-                ends = [m.end() - 1 for m in WORD_RE.finditer(text)]
-                if ends:
-                    x = ends[0]
-        self._jump_to_column(x)
+        self._word_motion(widget, count, lambda m: m.end() - 1, forward=True)
 
     def _word_backward(self, widget, count):
-        ctx = self._viewer_ctx()
-        if ctx is None:
-            return
-        text, _place, x, _y = ctx
-
-        for _ in range(count):
-            starts = [m.start() for m in WORD_RE.finditer(text) if m.start() < x]
-            if starts:
-                x = starts[-1]
-            else:
-                # wrap to the last word of the previous line
-                self._send_key(widget, Qt.Key.Key_Up)
-                self._send_key(widget, Qt.Key.Key_End)
-                ctx = self._viewer_ctx()
-                if ctx is None:
-                    return
-                text, _place, x, _y = ctx
-                starts = [m.start() for m in WORD_RE.finditer(text)]
-                if starts:
-                    x = starts[-1]
-        self._jump_to_column(x)
+        self._word_motion(widget, count, lambda m: m.start(), forward=False)
 
     # ------------------------------------------------------------------ #
     # search: / n N
@@ -787,10 +767,10 @@ class VimEventFilter(QtCore.QObject):
             ida_kernwin.msg(f"[idavim] pattern not found: {self.search}\n")
             return
 
-        ctx = self._viewer_ctx()
-        if ctx is None:
+        result = self._viewer_place()
+        if result is None:
             return
-        _text, place, x, y = ctx
+        place, x, y = result
         line_place = ida_kernwin.place_t_as_simpleline_place_t(place)
         if line_place is None:
             return
@@ -807,10 +787,10 @@ class VimEventFilter(QtCore.QObject):
         """{count}n/N in the disassembly view: walk item heads up to the
         count-th match, spending one shared DISASM_SEARCH_LIMIT budget for
         the whole command, and jumpto only the final landing spot."""
-        ctx = self._viewer_ctx()
-        if ctx is None:
+        result = self._viewer_place()
+        if result is None:
             return
-        _text, place, _x, _y = ctx
+        place, _x, _y = result
         addr_place = ida_kernwin.place_t_as_idaplace_t(place)
         if addr_place is None:
             return
@@ -832,8 +812,8 @@ class VimEventFilter(QtCore.QObject):
                 break  # hit the edge of the listing (no wrap here)
 
             line = ida_lines.generate_disasm_line(ea, ida_lines.GENDSM_REMOVE_TAGS) or ""
-            name = ida_name.get_name(ea) or ""
-            if pattern in line.lower() or pattern in name.lower():
+            # the name is only consulted when the line itself doesn't match
+            if pattern in line.lower() or pattern in (ida_name.get_name(ea) or "").lower():
                 target = ea
                 found += 1
 
@@ -920,10 +900,6 @@ class toggle_action_handler_t(ida_kernwin.action_handler_t):
 
 class idavim_plugmod_t(ida_idaapi.plugmod_t):
     def __init__(self):
-        self.event_filter = None
-        self.init()
-
-    def init(self):
         self.event_filter = acquire_filter()
         logger.info("idavim loaded and enabled (Shift+Esc: toggle)")
 
