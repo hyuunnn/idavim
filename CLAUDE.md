@@ -84,7 +84,10 @@ and the `ida-plugin.json` description in sync when keys change.
   (ordering invariant above), and is SKIPPED while a prefix is pending: a
   pending f/F target must always be consumed — `fc` leaking to IDA ran
   MakeCode, a destructive DB edit. Don't simplify the `not self.pending`
-  condition away. `:` uses ask_long (ask_str + HIST_IDENT rejects digits).
+  condition away. For the same reason eventFilter's except fails CLOSED
+  while a prefix is pending (swallow one key, reset) — an exception in the
+  probe would otherwise leave the override unaccepted and fire IDA's
+  shortcut. `:` uses ask_long (ask_str + HIST_IDENT rejects digits).
 - Never intercept when a modal widget is active, focus is in a text input,
   or the focus window is a QDialog; act only in `BWN_DISASM` /
   `BWN_PSEUDOCODE`, and in `BWN_DISASM` only with a `TCCRT_FLAT` renderer

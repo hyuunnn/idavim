@@ -192,6 +192,13 @@ class VimEventFilter(QtCore.QObject):
             return self._handle(event)
         except Exception:
             logger.exception("idavim key handling failed")
+            if self.pending:
+                # fail closed while a prefix is pending: an unaccepted
+                # override would fire IDA's shortcut for the target key
+                # (fc → MakeCode); swallow one key and reset instead
+                self._reset_pending()
+                event.accept()
+                return True
             return False
 
     def _in_vim_context(self, event):
