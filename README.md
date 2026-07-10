@@ -49,7 +49,7 @@ With "Synchronize with" enabled, views linked to the pseudocode follow idavim mo
 | Key | Action |
 |---|---|
 | `f{char}` / `F{char}` | find character forward / backward in the current line |
-| `;` / `,` | repeat last `f`/`F` (same / opposite direction) |
+| `;` / `,` | repeat last `f`/`F` (same / opposite direction) — until `f`/`F` has been used, both stay with IDA (`;` is "enter comment") |
 | `/` | search (prompts for a pattern, case-insensitive substring) |
 | `n` / `N` | next / previous search match |
 
