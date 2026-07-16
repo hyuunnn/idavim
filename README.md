@@ -14,7 +14,7 @@ Works in both the **disassembly view** and the **Hex-Rays pseudocode view**.
 
 idavim is a simple on/off switch:
 
-- **Enabled** (default): the keys below are intercepted for navigation, taking priority over IDA's single-key shortcuts (`n` rename, `d` data, `u` undefine, `g` jump, `c` code, ...).
+- **Enabled** (default): the keys below are intercepted for navigation, taking priority over IDA's single-key shortcuts (`n` rename, `d` data, `u` undefine, `g` jump, `c` code, `*` array, `#` number, ...).
 - **Disabled**: every key goes to IDA, so all native IDA shortcuts work as usual.
 
 | Action | Key |
@@ -52,6 +52,7 @@ With "Synchronize with" enabled, views linked to the pseudocode follow idavim mo
 | `;` / `,` | repeat last `f`/`F` (same / opposite direction) — until `f`/`F` has been used, both stay with IDA (`;` is "enter comment") |
 | `/` | search (prompts for a pattern, case-insensitive substring) |
 | `n` / `N` | next / previous search match |
+| `*` / `#` | search forward / backward for the identifier under the cursor (whole-word, so `v1` doesn't stop on `v12`; case-insensitive like `/`; `n`/`N` continue it) |
 
 In the pseudocode view, `/` searches all lines of the current function and wraps around.
 In the disassembly view it walks item heads (disassembly text and names) from the cursor.

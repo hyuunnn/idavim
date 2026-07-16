@@ -77,6 +77,17 @@ and the `ida-plugin.json` description in sync when keys change.
   budget per command, jumps to the last match reached, reports partial
   progress. (The old `min(count, 32)` cap silently truncated counts.)
   Backward in-line matching is match-start based (start < caret, like vim).
+- **`*`/`#` reuse the `/`→`n`/`N` machinery** with a whole-word regex
+  (`\b`), so `v1` never stops on `v12`; `/` stays substring. The identifier
+  is taken from a `\w`-run scan at the caret column (falling right to the
+  next identifier on the line, vim-style) — NOT `get_highlight`, which can
+  be stale/locked from a past click and needn't match the caret. `*`
+  shadows IDA's MakeArray and `#` OpNumber (same trade as n/d/u/g/c).
+  `*`/`#` anchor the bisect step at the identifier's START (anchor_x), not
+  the caret — vim's `#` from mid-word goes to the previous occurrence.
+  The pseudocode scan prefilters each line with a casefolded substring
+  test before the regex: a `\b`/IGNORECASE pattern loses sre's literal
+  fast path (measured 34ms→7ms per press on a 40k-line function).
 - **`cw` renames in BOTH views**, dispatching per view
   (`process_ui_action`: `hx:Rename` / `MakeName`). `c` therefore shadows
   IDA's MakeCode while enabled — the same trade as n/d/u/g, toggle off to

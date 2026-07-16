@@ -1,6 +1,6 @@
 """idavim - vim-style keyboard navigation for IDA Pro.
 
-Provides vim-like navigation (hjkl, f, /, n, u/d half-page scrolling,
+Provides vim-like navigation (hjkl, f, /, n, */#, u/d half-page scrolling,
 gg/G, counts, word motions, cw rename) in the disassembly and Hex-Rays
 pseudocode views, similar to Vimium / IdeaVim.
 
@@ -58,9 +58,10 @@ MOTION_LIMIT = 10000
 
 # characters handled while idavim is enabled (without a pending prefix key).
 # `i` is deliberately absent: it is IDA's "insert comment line" in the
-# disassembly view. `c` shadows IDA's MakeCode while enabled — the same
-# trade as n/d/u/g (toggle idavim off to use them).
-VIM_KEYS = set("hjklGgcudfFwbe0$^;,/nN123456789")
+# disassembly view. `c` shadows IDA's MakeCode while enabled, `*` MakeArray
+# and `#` OpNumber — the same trade as n/d/u/g (toggle idavim off to use
+# them).
+VIM_KEYS = set("hjklGgcudfFwbe0$^;,/nN*#123456789")
 
 # keys intercepted only in the pseudocode view: in the disassembly view ':'
 # is IDA's "enter comment" (and there are no line numbers to jump to). The
@@ -86,6 +87,10 @@ MODIFIER_KEYS = (
 
 WORD_RE = re.compile(r"\w+|[^\w\s]+")
 
+# what */# consider an identifier: vim's default iskeyword (\w), which is
+# exactly the C identifier class the listing views render
+IDENT_RE = re.compile(r"\w+")
+
 
 def _plain_curline(viewer):
     line = ida_kernwin.get_custom_viewer_curline(viewer, False)
@@ -104,7 +109,9 @@ class VimEventFilter(QtCore.QObject):
         self.pending_count = 0  # count typed before the pending prefix (3gg)
         self.count = ""  # accumulated count prefix, e.g. "12" for 12j
         self.last_find = None  # (cmd, char) for ; and ,
-        self.search = ""  # last / pattern for n and N
+        self.search = ""  # last search pattern (/ or */#) for n and N
+        self.search_re = None  # compiled form; whole-word for */#
+        self.search_key = ""  # casefolded prefilter key (see _set_search)
         self._synthesizing = False
 
     # ------------------------------------------------------------------ #
@@ -396,6 +403,8 @@ class VimEventFilter(QtCore.QObject):
             self._search_step(1, count)
         elif char == "N":
             self._search_step(-1, count)
+        elif char in ("*", "#"):
+            self._search_word(1 if char == "*" else -1, count)
 
         return True
 
@@ -738,41 +747,75 @@ class VimEventFilter(QtCore.QObject):
             self._goto_line(value)
 
     # ------------------------------------------------------------------ #
-    # search: / n N
+    # search: / n N * #
     # ------------------------------------------------------------------ #
+
+    def _set_search(self, pattern, whole_word=False):
+        """Set the pattern n/N step through: a case-insensitive substring
+        for /, whole-word for */# (vim's \\<word\\> — `v1` must not stop
+        on `v12`)."""
+        self.search = pattern
+        escaped = re.escape(pattern)
+        if whole_word:
+            escaped = r"\b" + escaped + r"\b"
+        self.search_re = re.compile(escaped, re.IGNORECASE)
+        # \b/IGNORECASE regexes lose sre's fast literal skip (measured 4-8x
+        # slower over big functions), so the per-press pseudocode scan first
+        # rejects lines with a casefolded substring test — a strict superset
+        # of the regex's matches (casefold, not lower: ς/σ, µ/μ)
+        self.search_key = pattern.casefold()
 
     def _prompt_search(self):
         pattern = ida_kernwin.ask_str(self.search, ida_kernwin.HIST_SRCH, "idavim search")
         if pattern:
-            self.search = pattern
+            self._set_search(pattern)
             self._search_step(1, 1)
 
-    def _search_step(self, direction, count):
+    def _search_word(self, direction, count):
+        """*/#: search forward/backward for the identifier under the
+        cursor. On whitespace/punctuation, the nearest identifier to the
+        right on the current line is used (vim behavior)."""
+        ctx = self._viewer_ctx()
+        if ctx is None:
+            return
+        word = None
+        text, _place, x, _y = ctx
+        for m in IDENT_RE.finditer(text):
+            if m.end() > x:
+                word = m
+                break
+        if word is None:
+            ida_kernwin.msg("[idavim] no identifier under cursor\n")
+            return
+        self._set_search(word.group(), whole_word=True)
+        # anchor at the identifier's start, not the caret: vim's # from
+        # mid-word goes to the PREVIOUS occurrence (not the word's start),
+        # and * from the whitespace left of a word skips the adjacent word
+        self._search_step(direction, count, anchor_x=word.start())
+
+    def _search_step(self, direction, count, anchor_x=None):
         if not self.search:
             ida_kernwin.msg("[idavim] no previous search (use /)\n")
             return
         if self._is_pseudocode():
-            self._search_pseudocode(direction, count)
+            self._search_pseudocode(direction, count, anchor_x)
         else:
             self._search_disasm(direction, count)
 
-    def _search_pseudocode(self, direction, count):
+    def _search_pseudocode(self, direction, count, anchor_x=None):
         """{count}n/N in the pseudocode view: collect every match position
         once, then step into the sorted list with modular index arithmetic.
         Any count is exact and costs one scan of the function plus a single
-        jumpto, so counts need no cap here."""
+        jumpto, so counts need no cap here. anchor_x replaces the caret
+        column as the stepping origin (*/# anchor at the identifier)."""
         lines = self._pseudocode_lines()
         if not lines:
             return  # decompilation not ready yet
-        pattern = self.search.lower()
 
         matches = []  # (line, column) of every occurrence, in text order
         for n, line in enumerate(lines):
-            low = line.lower()
-            col = low.find(pattern)
-            while col >= 0:
-                matches.append((n, col))
-                col = low.find(pattern, col + 1)
+            if self.search_key in line.casefold():
+                matches.extend((n, m.start()) for m in self.search_re.finditer(line))
         if not matches:
             ida_kernwin.msg(f"[idavim] pattern not found: {self.search}\n")
             return
@@ -784,8 +827,8 @@ class VimEventFilter(QtCore.QObject):
         line_place = ida_kernwin.place_t_as_simpleline_place_t(place)
         if line_place is None:
             return
-        # the count-th match strictly beyond the caret, wrapping vim-style
-        cur = (line_place.n, x)
+        # the count-th match strictly beyond the anchor, wrapping vim-style
+        cur = (line_place.n, x if anchor_x is None else anchor_x)
         if direction > 0:
             idx = bisect.bisect_right(matches, cur) + count - 1
         else:
@@ -805,7 +848,6 @@ class VimEventFilter(QtCore.QObject):
         if addr_place is None:
             return
         ea = addr_place.ea
-        pattern = self.search.lower()
         min_ea = ida_ida.inf_get_min_ea()
         max_ea = ida_ida.inf_get_max_ea()
 
@@ -823,7 +865,7 @@ class VimEventFilter(QtCore.QObject):
 
             line = ida_lines.generate_disasm_line(ea, ida_lines.GENDSM_REMOVE_TAGS) or ""
             # the name is only consulted when the line itself doesn't match
-            if pattern in line.lower() or pattern in (ida_name.get_name(ea) or "").lower():
+            if self.search_re.search(line) or self.search_re.search(ida_name.get_name(ea) or ""):
                 target = ea
                 found += 1
 
