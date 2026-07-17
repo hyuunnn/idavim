@@ -1,8 +1,8 @@
 """idavim - vim-style keyboard navigation for IDA Pro.
 
 Provides vim-like navigation (hjkl, f, /, n, */#, u/d half-page scrolling,
-gg/G, counts, word motions, cw rename, m/` marks) in the disassembly and
-Hex-Rays pseudocode views, similar to Vimium / IdeaVim.
+gg/G, counts, word motions, cw rename, m/` marks, yy address copy) in the
+disassembly and Hex-Rays pseudocode views, similar to Vimium / IdeaVim.
 
 Keys are intercepted with an application-level Qt event filter so they take
 priority over IDA's own single-key shortcuts (n, d, u, g, ...) while idavim
@@ -60,9 +60,9 @@ MOTION_LIMIT = 10000
 # characters handled while idavim is enabled (without a pending prefix key).
 # `i` is deliberately absent: it is IDA's "insert comment line" in the
 # disassembly view. `c` shadows IDA's MakeCode while enabled, `*` MakeArray,
-# `#` OpNumber and `m` OpEnum — the same trade as n/d/u/g (toggle idavim off
-# to use them). The backtick is unbound in IDA.
-VIM_KEYS = set("hjklGgcudfFwbe0$^;,/nN*#123456789m`")
+# `#` OpNumber, `m` OpEnum and `y` SetType — the same trade as n/d/u/g
+# (toggle idavim off to use them). The backtick is unbound in IDA.
+VIM_KEYS = set("hjklGgcudfFwbe0$^;,/nN*#123456789m`y")
 
 # keys intercepted only in the pseudocode view: in the disassembly view ':'
 # is IDA's "enter comment" (and there are no line numbers to jump to). The
@@ -121,7 +121,7 @@ class VimEventFilter(QtCore.QObject):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.enabled = True
-        self.pending = ""  # "f"/"F" (find char), "g" (gg), "c" (cw), "m"/"`" (marks)
+        self.pending = ""  # "f"/"F" (find char), "g" (gg), "c" (cw), "m"/"`" (marks), "y" (yy)
         self.pending_count = 0  # count typed before the pending prefix (3gg)
         self.count = ""  # accumulated count prefix, e.g. "12" for 12j
         self.last_find = None  # (cmd, char) for ; and ,
@@ -366,6 +366,8 @@ class VimEventFilter(QtCore.QObject):
                 self._set_mark(char)
             elif cmd == "`" and char in MARK_LETTERS:
                 self._jump_mark(char)
+            elif cmd == "y" and char == "y":
+                self._yank_address()
             # anything else cancels the pending command (vim-like)
             return True
 
@@ -412,7 +414,7 @@ class VimEventFilter(QtCore.QObject):
             self.pending = char
         elif char == "c":
             self.pending = "c"
-        elif char in ("m", "`"):
+        elif char in ("m", "`", "y"):
             self.pending = char
         elif char in (";", ","):
             self._repeat_find(char, count)
@@ -753,8 +755,22 @@ class VimEventFilter(QtCore.QObject):
         self._word_motion(widget, count, lambda m: m.start(), forward=False)
 
     # ------------------------------------------------------------------ #
-    # deferred prompts and actions: cw :
+    # deferred prompts and actions: cw : yy
     # ------------------------------------------------------------------ #
+
+    def _yank_address(self):
+        """yy: copy the current line's address to the clipboard —
+        vim's "yank line" mapped onto what a listing line is to an
+        analyst, its ea."""
+        result = self._viewer_place()
+        if result is None:
+            return
+        ea = result[0].toea()
+        if ea == ida_idaapi.BADADDR:
+            ida_kernwin.msg("[idavim] no address here to copy\n")
+            return
+        QtWidgets.QApplication.clipboard().setText(f"{ea:#x}")
+        ida_kernwin.msg(f"[idavim] copied {ea:#x}\n")
 
     def _rename_under_cursor(self):
         action = (

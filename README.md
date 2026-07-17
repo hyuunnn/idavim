@@ -14,7 +14,7 @@ Works in both the **disassembly view** and the **Hex-Rays pseudocode view**.
 
 idavim is a simple on/off switch:
 
-- **Enabled** (default): the keys below are intercepted for navigation, taking priority over IDA's single-key shortcuts (`n` rename, `d` data, `u` undefine, `g` jump, `c` code, `*` array, `#` number, `m` enum, ...).
+- **Enabled** (default): the keys below are intercepted for navigation, taking priority over IDA's single-key shortcuts (`n` rename, `d` data, `u` undefine, `g` jump, `c` code, `*` array, `#` number, `m` enum, `y` set type, ...).
 - **Disabled**: every key goes to IDA, so all native IDA shortcuts work as usual.
 
 | Action | Key |
@@ -71,15 +71,16 @@ Marks are stored as IDA bookmarks, so they persist in the database and appear in
 | Key | Action |
 |---|---|
 | `cw` | rename the identifier under the cursor (opens IDA's rename dialog) |
+| `yy` | copy the current line's address to the clipboard (e.g. `0x401000`) |
 
-Everything else (`Esc`, `Enter`, `x`, `Space`, arrows, ...) is passed through to IDA even while idavim is enabled. The only exception is the single key typed right after `f`/`F`/`g`/`c`/`m`/`` ` ``: a printable key completes that command, and a plain `Esc` cancels it (vim-style) without triggering IDA's "navigate back".
+Everything else (`Esc`, `Enter`, `x`, `Space`, arrows, ...) is passed through to IDA even while idavim is enabled. The only exception is the single key typed right after `f`/`F`/`g`/`c`/`m`/`` ` ``/`y`: a printable key completes that command, and a plain `Esc` cancels it (vim-style) without triggering IDA's "navigate back".
 
 ### Command composition
 
 idavim is a navigation aid, not a vim emulator — only single commands (optionally with a count prefix) are supported:
 
 - **Supported**: `count + motion` (`12j`, `3w`, `2d`), `count + gg/G` (`30G`, pseudocode only), `f{char}` then `;`/`,`
-- **Not supported**: `count + f/F` (`3fx` finds the 1st match — use `f` + `;;`), operators and text objects (`dw`, `yy`, `ci(`, ...), registers, macros
+- **Not supported**: `count + f/F` (`3fx` finds the 1st match — use `f` + `;;`), operators and text objects (`dw`, `ci(`, ...), registers, macros
 
 An interrupted two-key sequence behaves like vim: an invalid follow-up key cancels the command (`30g` then `3` throws away both), and switching focus to another widget or clicking the mouse abandons any half-typed command.
 
