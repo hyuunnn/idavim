@@ -1,8 +1,8 @@
 """idavim - vim-style keyboard navigation for IDA Pro.
 
 Provides vim-like navigation (hjkl, f, /, n, */#, u/d half-page scrolling,
-gg/G, counts, word motions, cw rename) in the disassembly and Hex-Rays
-pseudocode views, similar to Vimium / IdeaVim.
+gg/G, counts, word motions, cw rename, m/` marks) in the disassembly and
+Hex-Rays pseudocode views, similar to Vimium / IdeaVim.
 
 Keys are intercepted with an application-level Qt event filter so they take
 priority over IDA's own single-key shortcuts (n, d, u, g, ...) while idavim
@@ -19,6 +19,7 @@ import ida_ida
 import ida_idaapi
 import ida_kernwin
 import ida_lines
+import ida_moves
 import ida_name
 
 try:
@@ -58,10 +59,10 @@ MOTION_LIMIT = 10000
 
 # characters handled while idavim is enabled (without a pending prefix key).
 # `i` is deliberately absent: it is IDA's "insert comment line" in the
-# disassembly view. `c` shadows IDA's MakeCode while enabled, `*` MakeArray
-# and `#` OpNumber — the same trade as n/d/u/g (toggle idavim off to use
-# them).
-VIM_KEYS = set("hjklGgcudfFwbe0$^;,/nN*#123456789")
+# disassembly view. `c` shadows IDA's MakeCode while enabled, `*` MakeArray,
+# `#` OpNumber and `m` OpEnum — the same trade as n/d/u/g (toggle idavim off
+# to use them). The backtick is unbound in IDA.
+VIM_KEYS = set("hjklGgcudfFwbe0$^;,/nN*#123456789m`")
 
 # keys intercepted only in the pseudocode view: in the disassembly view ':'
 # is IDA's "enter comment" (and there are no line numbers to jump to). The
@@ -91,6 +92,21 @@ WORD_RE = re.compile(r"\w+|[^\w\s]+")
 # exactly the C identifier class the listing views render
 IDENT_RE = re.compile(r"\w+")
 
+# m{a-z}/`{a-z} marks are stored as IDA bookmarks (ida_moves.bookmarks_t) so
+# they live in the database and show up in IDA's Bookmarks widget. A mark
+# remembers only an ea (breakpoint-style granularity): jumpto(ea) resolves
+# in whichever view is current, so marks cross the disassembly/pseudocode
+# boundary for free. Bookmarks have no letter field, so the letter is
+# encoded in the description ("idavim: a"); marks are looked up by
+# description match, never by stored index — deleting a bookmark in the
+# widget renumbers the rest.
+MARK_LETTERS = set("abcdefghijklmnopqrstuvwxyz")
+
+# not exposed by ida_moves: bookmarks_t.mark() returns this on failure. Never
+# pass it as the index to append — that is a silent no-op, not an append; a
+# real append passes index = len(bookmarks_t(viewer)).
+BOOKMARKS_BAD_INDEX = 0xFFFFFFFF
+
 
 def _plain_curline(viewer):
     line = ida_kernwin.get_custom_viewer_curline(viewer, False)
@@ -105,7 +121,7 @@ class VimEventFilter(QtCore.QObject):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.enabled = True
-        self.pending = ""  # "f"/"F" (find char), "g" (gg) or "c" (cw)
+        self.pending = ""  # "f"/"F" (find char), "g" (gg), "c" (cw), "m"/"`" (marks)
         self.pending_count = 0  # count typed before the pending prefix (3gg)
         self.count = ""  # accumulated count prefix, e.g. "12" for 12j
         self.last_find = None  # (cmd, char) for ; and ,
@@ -346,6 +362,10 @@ class VimEventFilter(QtCore.QObject):
                 # cw: rename the identifier under the cursor, vim's
                 # "change word" mapped onto IDA's semantic rename
                 QtCore.QTimer.singleShot(0, self._rename_under_cursor)
+            elif cmd == "m" and char in MARK_LETTERS:
+                self._set_mark(char)
+            elif cmd == "`" and char in MARK_LETTERS:
+                self._jump_mark(char)
             # anything else cancels the pending command (vim-like)
             return True
 
@@ -392,6 +412,8 @@ class VimEventFilter(QtCore.QObject):
             self.pending = char
         elif char == "c":
             self.pending = "c"
+        elif char in ("m", "`"):
+            self.pending = char
         elif char in (";", ","):
             self._repeat_find(char, count)
         elif char == "/":
@@ -745,6 +767,80 @@ class VimEventFilter(QtCore.QObject):
         value = ida_kernwin.ask_long(1, "idavim: go to line")
         if value is not None and value > 0:
             self._goto_line(value)
+
+    # ------------------------------------------------------------------ #
+    # marks: m{a-z} `{a-z}
+    # ------------------------------------------------------------------ #
+
+    def _find_mark(self, viewer, char):
+        """(index, lochist_entry_t) of the bookmark holding mark `char`,
+        or None. Always a fresh description scan: bookmark indices are
+        renumbered when one is deleted in the Bookmarks widget, so a
+        stored index cannot be trusted."""
+        target = f"idavim: {char}"
+        for index, (entry, desc) in enumerate(ida_moves.bookmarks_t(viewer)):
+            if desc == target:
+                return index, entry
+        return None
+
+    def _set_mark(self, char):
+        viewer = ida_kernwin.get_current_viewer()
+        if viewer is None:
+            return
+        loc = ida_moves.lochist_entry_t()
+        if not ida_kernwin.get_custom_viewer_location(loc, viewer):
+            return
+        ea = loc.place().toea()
+        if ea == ida_idaapi.BADADDR:
+            ida_kernwin.msg(f"[idavim] cannot set mark {char!r}: no address here\n")
+            return
+
+        # normalize the place to idaplace_t: bookmark storage is split per
+        # place class, and marking the pseudocode's own place "succeeds"
+        # into a storage the Bookmarks widget and bookmarks_t(viewer) never
+        # read. idaplace_t is abstract (and the class template must not be
+        # mutated in place), so clone the template and retarget the clone.
+        template = ida_kernwin.get_place_class_template(
+            ida_kernwin.get_place_class_id("idaplace_t")
+        )
+        ida_place = ida_kernwin.place_t_as_idaplace_t(template.clone())
+        ida_place.ea = ea
+        ida_place.lnnum = 0
+        loc.set_place(ida_place)
+
+        found = self._find_mark(viewer, char)
+        if found is not None:
+            index = found[0]  # remarking a letter overwrites its slot
+        else:
+            index = len(ida_moves.bookmarks_t(viewer))
+        if (
+            ida_moves.bookmarks_t.mark(loc, index, None, f"idavim: {char}", None)
+            == BOOKMARKS_BAD_INDEX
+        ):
+            ida_kernwin.msg(f"[idavim] could not set mark {char!r}\n")
+            return
+        ida_kernwin.msg(f"[idavim] mark {char!r} set at {ea:#x}\n")
+
+    def _jump_mark(self, char):
+        viewer = ida_kernwin.get_current_viewer()
+        if viewer is None:
+            return
+        found = self._find_mark(viewer, char)
+        if found is None:
+            ida_kernwin.msg(f"[idavim] mark {char!r} not set\n")
+            return
+        # a mark is just its ea: one jumpto resolves it in whichever view
+        # is current, landing on the line mapped to the address
+        if not ida_kernwin.jumpto(found[1].place().toea()):
+            return
+        if self._is_pseudocode():
+            # jumpto is programmatic, so nudge synced views to follow
+            result = self._viewer_place()
+            if result is None:
+                return
+            line_place = ida_kernwin.place_t_as_simpleline_place_t(result[0])
+            if line_place is not None:
+                self._nudge_sync(line_place.n)
 
     # ------------------------------------------------------------------ #
     # search: / n N * #
