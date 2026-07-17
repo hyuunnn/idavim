@@ -410,11 +410,7 @@ class VimEventFilter(QtCore.QObject):
             self._word_end(widget, self._capped_count(count))
         elif char == "b":
             self._word_backward(widget, self._capped_count(count))
-        elif char in ("f", "F"):
-            self.pending = char
-        elif char == "c":
-            self.pending = "c"
-        elif char in ("m", "`", "y"):
+        elif char in ("f", "F", "c", "m", "`", "y"):
             self.pending = char
         elif char in (";", ","):
             self._repeat_find(char, count)
@@ -788,12 +784,18 @@ class VimEventFilter(QtCore.QObject):
     # marks: m{a-z} `{a-z}
     # ------------------------------------------------------------------ #
 
+    @staticmethod
+    def _mark_desc(char):
+        # the description IS the lookup key: _find_mark and the mark()
+        # call must build the exact same string
+        return f"idavim: {char}"
+
     def _find_mark(self, viewer, char):
         """(index, lochist_entry_t) of the bookmark holding mark `char`,
         or None. Always a fresh description scan: bookmark indices are
         renumbered when one is deleted in the Bookmarks widget, so a
         stored index cannot be trusted."""
-        target = f"idavim: {char}"
+        target = self._mark_desc(char)
         for index, (entry, desc) in enumerate(ida_moves.bookmarks_t(viewer)):
             if desc == target:
                 return index, entry
@@ -830,7 +832,7 @@ class VimEventFilter(QtCore.QObject):
         else:
             index = len(ida_moves.bookmarks_t(viewer))
         if (
-            ida_moves.bookmarks_t.mark(loc, index, None, f"idavim: {char}", None)
+            ida_moves.bookmarks_t.mark(loc, index, None, self._mark_desc(char), None)
             == BOOKMARKS_BAD_INDEX
         ):
             ida_kernwin.msg(f"[idavim] could not set mark {char!r}\n")
