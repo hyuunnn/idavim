@@ -93,6 +93,24 @@ and the `ida-plugin.json` description in sync when keys change.
   IDA's MakeCode while enabled — the same trade as n/d/u/g, toggle off to
   use them. (Originally `c` stayed with IDA in the disassembly view; that
   exception was dropped as inconsistent with the toggle model.)
+- **Marks are IDA bookmarks, ea-only** (`m{a-z}`/`` `{a-z} ``): a mark
+  remembers just an address, so `` ` `` is ONE `jumpto` — cross-view for
+  free, one Esc-history entry. (Line/column restore was built and dropped:
+  it needs a second jump, whose extra history push made Esc land on the
+  intermediate spot.) Three silent bookmark traps, measured on IDA 9.3:
+  (1) storage is split per place class — `mark()`ing the pseudocode's own
+  place returns success into a storage the Bookmarks widget and
+  `bookmarks_t(viewer)` never read, so the place is normalized to an
+  idaplace_t carrying only the ea (clone the class template; idaplace_t
+  is abstract, and don't mutate the template itself). (2) passing
+  BOOKMARKS_BAD_INDEX (0xFFFFFFFF, not exposed by ida_moves) as the index
+  is a silent no-op, NOT an append — append with
+  `index = len(bookmarks_t(viewer))`; an existing index overwrites (used
+  to remark a letter). (3) never trust a stored index — widget deletion
+  renumbers, so every lookup rescans by description (`"idavim: a"`, exact
+  string match; the letter lives there because bookmarks have no letter
+  field). `m` shadows IDA's OpEnum, `y` (yy = copy the line's ea)
+  SetType; the backtick is unbound.
 - **Pseudocode-only key** `:` (line prompt): in the disassembly view `:`
   is IDA's "enter comment" and there are no line numbers to jump to. The
   gate (PSEUDOCODE_ONLY_KEYS) lives in `_in_vim_context`, NOT `_wants`
